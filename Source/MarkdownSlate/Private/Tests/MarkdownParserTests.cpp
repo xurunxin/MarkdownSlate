@@ -1,5 +1,7 @@
 #include "Misc/AutomationTest.h"
+#include "Emoji/MarkdownEmojiScanner.h"
 #include "Parser/MarkdownParser.h"
+#include "Render/MarkdownRenderBuilder.h"
 
 #if WITH_AUTOMATION_TESTS
 
@@ -221,6 +223,214 @@ bool FMarkdownParserImageTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("Found image span"), bFoundImage);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownParserTaskListMetadataTest, "MarkdownSlate.Parser.TaskListMetadata", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownParserTaskListMetadataTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+
+	auto Root = Parser.Parse("- [ ] Todo\n- [x] Done");
+	TestNotNull(TEXT("Root"), Root.Get());
+	TestTrue(TEXT("Root has list"), Root->Children.Num() > 0);
+
+	auto List = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[0]);
+	TestEqual(TEXT("List type"), List->Type, EMarkdownBlockType::UnorderedList);
+	TestEqual(TEXT("List has two items"), List->Children.Num(), 2);
+
+	auto Todo = StaticCastSharedPtr<FMarkdownBlockNode>(List->Children[0]);
+	auto Done = StaticCastSharedPtr<FMarkdownBlockNode>(List->Children[1]);
+
+	TestTrue(TEXT("Todo is task item"), Todo->bIsTaskItem);
+	TestEqual(TEXT("Todo task mark"), Todo->TaskMark, TCHAR(' '));
+	TestTrue(TEXT("Done is task item"), Done->bIsTaskItem);
+	TestEqual(TEXT("Done task mark"), Done->TaskMark, TCHAR('x'));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownParserHeadingStrongWithoutTrailingNewlineTest, "MarkdownSlate.Parser.HeadingStrongWithoutTrailingNewline", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownParserHeadingStrongWithoutTrailingNewlineTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+
+	auto Root = Parser.Parse(TEXT("## **Completed Scope**"));
+	TestNotNull(TEXT("Root"), Root.Get());
+	TestTrue(TEXT("Root has heading"), Root->Children.Num() > 0);
+
+	auto Heading = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[0]);
+	TestEqual(TEXT("Heading type"), Heading->Type, EMarkdownBlockType::Heading);
+	TestEqual(TEXT("Heading level"), Heading->HeadingLevel, 2);
+
+	bool bFoundStrong = false;
+	for (const auto& Child : Heading->Children)
+	{
+		if (Child->IsSpanNode())
+		{
+			auto Span = StaticCastSharedPtr<FMarkdownSpanNode>(Child);
+			if (Span->Type == EMarkdownSpanType::Strong)
+			{
+				bFoundStrong = Span->Children.Num() > 0;
+				break;
+			}
+		}
+	}
+
+	TestTrue(TEXT("Heading strong span is parsed"), bFoundStrong);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownParserTableAfterInlineHeadingTest, "MarkdownSlate.Parser.TableAfterInlineHeading", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownParserTableAfterInlineHeadingTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+
+	const FString Markdown = TEXT("# Report\n")
+		TEXT("Done\n")
+		TEXT("## Completed **Scope**\n")
+		TEXT("| # | Module | Status |\n")
+		TEXT("|---|---|---|\n")
+		TEXT("| 1 | Cache | done |");
+
+	auto Root = Parser.Parse(Markdown);
+	TestNotNull(TEXT("Root"), Root.Get());
+	TestEqual(TEXT("Root block count"), Root->Children.Num(), 4);
+
+	auto Heading = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[2]);
+	TestEqual(TEXT("Third block is heading"), Heading->Type, EMarkdownBlockType::Heading);
+	TestEqual(TEXT("Heading level"), Heading->HeadingLevel, 2);
+
+	auto Table = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[3]);
+	TestEqual(TEXT("Fourth block is table"), Table->Type, EMarkdownBlockType::Table);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownParserTableAfterParagraphWithoutBlankLineTest, "MarkdownSlate.Parser.TableAfterParagraphWithoutBlankLine", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownParserTableAfterParagraphWithoutBlankLineTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+
+	const FString Markdown = TEXT("Summary line\n")
+		TEXT("| # | Module | Status |\n")
+		TEXT("|---|---|---|\n")
+		TEXT("| 1 | Cache | done |");
+
+	auto Root = Parser.Parse(Markdown);
+	TestNotNull(TEXT("Root"), Root.Get());
+	TestEqual(TEXT("Root block count"), Root->Children.Num(), 2);
+	if (Root->Children.Num() < 2)
+	{
+		return false;
+	}
+
+	auto Paragraph = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[0]);
+	TestEqual(TEXT("First block is paragraph"), Paragraph->Type, EMarkdownBlockType::Paragraph);
+
+	auto Table = StaticCastSharedPtr<FMarkdownBlockNode>(Root->Children[1]);
+	TestEqual(TEXT("Second block is table"), Table->Type, EMarkdownBlockType::Table);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiSafeTextFallbackTest, "MarkdownSlate.Emoji.SafeTextFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiSafeTextFallbackTest::RunTest(const FString& Parameters)
+{
+	FString Text;
+	Text.AppendChar(TCHAR(0x2764));
+	Text.AppendChar(TCHAR(0xFE0F));
+	Text += TEXT(" ");
+	Text.AppendChar(TCHAR(0xD83E));
+	Text.AppendChar(TCHAR(0xDE7A));
+
+	const FString Fallback = FMarkdownEmojiScanner::MakeSafeTextFallback(Text);
+
+	TestTrue(TEXT("Fallback keeps BMP symbol text"), Fallback.Contains(FString::Chr(TCHAR(0x2764))));
+	TestFalse(TEXT("Fallback removes variation selector"), Fallback.Contains(FString::Chr(TCHAR(0xFE0F))));
+	TestFalse(TEXT("Fallback removes high surrogate"), Fallback.Contains(FString::Chr(TCHAR(0xD83E))));
+	TestFalse(TEXT("Fallback removes low surrogate"), Fallback.Contains(FString::Chr(TCHAR(0xDE7A))));
+	TestTrue(TEXT("Fallback replaces non-BMP emoji"), Fallback.Contains(TEXT("[emoji]")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiTwemojiCodeTest, "MarkdownSlate.Emoji.TwemojiCode", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiTwemojiCodeTest::RunTest(const FString& Parameters)
+{
+	FString Heart;
+	Heart.AppendChar(TCHAR(0x2764));
+	Heart.AppendChar(TCHAR(0xFE0F));
+	TestEqual(TEXT("Heart keeps variation selector"), FMarkdownEmojiScanner::EmojiToTwemojiCode(Heart), TEXT("2764-fe0f"));
+
+	FString Grinning;
+	Grinning.AppendChar(TCHAR(0xD83D));
+	Grinning.AppendChar(TCHAR(0xDE00));
+	TestEqual(TEXT("Grinning face code"), FMarkdownEmojiScanner::EmojiToTwemojiCode(Grinning), TEXT("1f600"));
+
+	FString Family;
+	Family.AppendChar(TCHAR(0xD83D)); Family.AppendChar(TCHAR(0xDC68));
+	Family.AppendChar(TCHAR(0x200D));
+	Family.AppendChar(TCHAR(0xD83D)); Family.AppendChar(TCHAR(0xDC69));
+	Family.AppendChar(TCHAR(0x200D));
+	Family.AppendChar(TCHAR(0xD83D)); Family.AppendChar(TCHAR(0xDC67));
+	Family.AppendChar(TCHAR(0x200D));
+	Family.AppendChar(TCHAR(0xD83D)); Family.AppendChar(TCHAR(0xDC66));
+	TestEqual(TEXT("Family ZWJ sequence code"), FMarkdownEmojiScanner::EmojiToTwemojiCode(Family), TEXT("1f468-200d-1f469-200d-1f467-200d-1f466"));
+
+	FString ThumbsUpMedium;
+	ThumbsUpMedium.AppendChar(TCHAR(0xD83D)); ThumbsUpMedium.AppendChar(TCHAR(0xDC4D));
+	ThumbsUpMedium.AppendChar(TCHAR(0xD83C)); ThumbsUpMedium.AppendChar(TCHAR(0xDFFD));
+	TestEqual(TEXT("Thumbs up skin tone code"), FMarkdownEmojiScanner::EmojiToTwemojiCode(ThumbsUpMedium), TEXT("1f44d-1f3fd"));
+
+	FString Hospital;
+	Hospital.AppendChar(TCHAR(0xD83C)); Hospital.AppendChar(TCHAR(0xDFE5));
+	TestEqual(TEXT("Hospital code"), FMarkdownEmojiScanner::EmojiToTwemojiCode(Hospital), TEXT("1f3e5"));
+
+	FString Stethoscope;
+	Stethoscope.AppendChar(TCHAR(0xD83E)); Stethoscope.AppendChar(TCHAR(0xDE7A));
+	TestEqual(TEXT("Stethoscope code"), FMarkdownEmojiScanner::EmojiToTwemojiCode(Stethoscope), TEXT("1fa7a"));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRenderBuilderNestedInlineTest, "MarkdownSlate.RenderBuilder.NestedInline", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRenderBuilderNestedInlineTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+	FMarkdownRenderBuilder Builder;
+
+	auto Root = Parser.Parse(TEXT("混排：**重要 ❤️** [链接 😀](https://example.com)"));
+	auto RenderRoot = Builder.Build(Root);
+	TestNotNull(TEXT("Render root"), RenderRoot.Get());
+	TestTrue(TEXT("Render root has paragraph"), RenderRoot->Children.Num() > 0);
+
+	auto Paragraph = RenderRoot->Children[0];
+	TestEqual(TEXT("Paragraph type"), Paragraph->Type, EMarkdownRenderNodeType::Paragraph);
+
+	bool bFoundStrongWithText = false;
+	bool bFoundLinkWithText = false;
+	for (const auto& Child : Paragraph->Children)
+	{
+		if (Child->Type == EMarkdownRenderNodeType::Strong)
+		{
+			bFoundStrongWithText = Child->Children.Num() > 0 &&
+				Child->Children[0]->Type == EMarkdownRenderNodeType::PlainText &&
+				Child->Children[0]->TextContent.ToString().Contains(TEXT("重要"));
+		}
+		else if (Child->Type == EMarkdownRenderNodeType::Link)
+		{
+			bFoundLinkWithText = Child->LinkUrl == TEXT("https://example.com") &&
+				Child->Children.Num() > 0 &&
+				Child->Children[0]->Type == EMarkdownRenderNodeType::PlainText &&
+				Child->Children[0]->TextContent.ToString().Contains(TEXT("链接"));
+		}
+	}
+
+	TestTrue(TEXT("Strong inline preserves child text"), bFoundStrongWithText);
+	TestTrue(TEXT("Link inline preserves child text"), bFoundLinkWithText);
 
 	return true;
 }

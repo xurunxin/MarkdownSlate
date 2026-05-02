@@ -195,7 +195,6 @@ FString FMarkdownEmojiScanner::EmojiToTwemojiCode(const FString& EmojiSequence)
 	for (int32 i = 0; i < EmojiSequence.Len(); )
 	{
 		uint32 C = ReadCodepoint(EmojiSequence, i);
-		if (C == 0xFE0F) continue;
 		Codepoints.Add(C);
 	}
 
@@ -204,6 +203,34 @@ FString FMarkdownEmojiScanner::EmojiToTwemojiCode(const FString& EmojiSequence)
 	{
 		if (j > 0) Result += TEXT("-");
 		Result += FString::Printf(TEXT("%x"), Codepoints[j]).ToLower();
+	}
+	return Result;
+}
+
+FString FMarkdownEmojiScanner::MakeSafeTextFallback(const FString& Text)
+{
+	FString Result;
+	for (int32 i = 0; i < Text.Len(); )
+	{
+		const int32 Before = i;
+		uint32 C = ReadCodepoint(Text, i);
+		if (C == 0)
+		{
+			break;
+		}
+
+		if (IsVariationSelector(C) || IsSkinTone(C) || IsZWJ(C) || IsKeycap(C))
+		{
+			continue;
+		}
+
+		if (C > 0xFFFF && IsEmojiCodepoint(C))
+		{
+			Result += TEXT("[emoji]");
+			continue;
+		}
+
+		Result += Text.Mid(Before, i - Before);
 	}
 	return Result;
 }

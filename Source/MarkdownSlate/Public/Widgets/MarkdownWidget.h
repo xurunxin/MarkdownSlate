@@ -157,6 +157,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Markdown")
 	void SetMarkdownText(const FString& InText);
 
+	UFUNCTION(BlueprintCallable, Category = "Markdown|Emoji")
+	void SetEnableEmojiRendering(bool bInEnableEmojiRendering);
+
+	UFUNCTION(BlueprintCallable, Category = "Markdown|Emoji")
+	void SetEmojiRenderMode(EMarkdownEmojiRenderMode InEmojiRenderMode);
+
 	UFUNCTION(BlueprintCallable, Category = "Markdown")
 	void RefreshDisplayMarkdown();
 

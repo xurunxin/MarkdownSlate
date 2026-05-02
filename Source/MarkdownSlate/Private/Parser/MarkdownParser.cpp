@@ -286,6 +286,75 @@ FMarkdownParser::FMarkdownParser()
 {
 }
 
+static bool IsFenceLine(const FString& Line)
+{
+	const FString Trimmed = Line.TrimStartAndEnd();
+	return Trimmed.StartsWith(TEXT("```")) || Trimmed.StartsWith(TEXT("~~~"));
+}
+
+static bool IsTableHeaderCandidateLine(const FString& Line)
+{
+	return Line.Contains(TEXT("|")) && !Line.TrimStartAndEnd().IsEmpty();
+}
+
+static bool IsTableDelimiterLine(const FString& Line)
+{
+	const FString Trimmed = Line.TrimStartAndEnd();
+	if (!Trimmed.Contains(TEXT("|")) || !Trimmed.Contains(TEXT("-")))
+	{
+		return false;
+	}
+
+	for (int32 i = 0; i < Trimmed.Len(); ++i)
+	{
+		const TCHAR C = Trimmed[i];
+		if (C != TCHAR('|') && C != TCHAR('-') && C != TCHAR(':') && C != TCHAR(' ') && C != TCHAR('\t'))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static FString NormalizeMarkdownInput(const FString& MarkdownText)
+{
+	FString Normalized = MarkdownText.Replace(TEXT("\r\n"), TEXT("\n")).Replace(TEXT("\r"), TEXT("\n"));
+
+	TArray<FString> Lines;
+	Normalized.ParseIntoArray(Lines, TEXT("\n"), false);
+
+	FString Result;
+	bool bInFence = false;
+	for (int32 i = 0; i < Lines.Num(); ++i)
+	{
+		const FString& Line = Lines[i];
+		const bool bFenceLine = IsFenceLine(Line);
+
+		if (!bInFence && i > 0 && i + 1 < Lines.Num() &&
+			IsTableHeaderCandidateLine(Line) && IsTableDelimiterLine(Lines[i + 1]) &&
+			!Lines[i - 1].TrimStartAndEnd().IsEmpty())
+		{
+			Result += TEXT("\n");
+		}
+
+		Result += Line;
+		Result += TEXT("\n");
+
+		if (bFenceLine)
+		{
+			bInFence = !bInFence;
+		}
+	}
+
+	if (Lines.Num() == 0 || !Result.EndsWith(TEXT("\n")))
+	{
+		Result += TEXT("\n");
+	}
+
+	return Result;
+}
+
 TSharedPtr<FMarkdownBlockNode> FMarkdownParser::Parse(const FString& MarkdownText)
 {
 	if (MarkdownText.IsEmpty())
@@ -295,7 +364,9 @@ TSharedPtr<FMarkdownBlockNode> FMarkdownParser::Parse(const FString& MarkdownTex
 		return Doc;
 	}
 
-	FTCHARToUTF8 Utf8(*MarkdownText);
+	FString ParseText = NormalizeMarkdownInput(MarkdownText);
+
+	FTCHARToUTF8 Utf8(*ParseText);
 	int32 Utf8Len = Utf8.Length();
 
 	MD_PARSER ParserDef;

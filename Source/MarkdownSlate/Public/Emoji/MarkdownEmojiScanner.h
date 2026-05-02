@@ -20,6 +20,9 @@ public:
 	// Convert emoji sequence to Twemoji codepoint filename (e.g. "1f600" or "2764-fe0f")
 	static FString EmojiToTwemojiCode(const FString& EmojiSequence);
 
+	// Make emoji text safe for plain Slate text fallback when no image provider is available.
+	static FString MakeSafeTextFallback(const FString& Text);
+
 private:
 	FMarkdownEmojiConfig Config;
 

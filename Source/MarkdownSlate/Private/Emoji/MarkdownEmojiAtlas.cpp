@@ -1,17 +1,18 @@
 #include "Emoji/MarkdownEmojiAtlas.h"
+#include "Emoji/MarkdownEmojiAtlasData.h"
 #include "Engine/Texture2D.h"
-#include "Engine/Texture2DDynamic.h"
-#include "ImageUtils.h"
 #include "Styling/SlateBrush.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
-#include "HAL/FileManager.h"
+#include "UObject/UObjectGlobals.h"
 
 FMarkdownEmojiAtlas::FMarkdownEmojiAtlas()
 {
 	GridCols = AtlasSize / CellSize;
+}
+
+FMarkdownEmojiAtlas::~FMarkdownEmojiAtlas()
+{
+	BrushCache.Empty();
+	AtlasTextures.Empty();
 }
 
 void FMarkdownEmojiAtlas::SetAtlasConfig(int32 InCellSize, int32 InAtlasSize)
@@ -24,17 +25,36 @@ void FMarkdownEmojiAtlas::SetAtlasConfig(int32 InCellSize, int32 InAtlasSize)
 
 void FMarkdownEmojiAtlas::SetAtlasTexture(UTexture2D* InTexture)
 {
-	AtlasTexture = InTexture;
+	SetAtlasTexture(0, InTexture);
+}
+
+void FMarkdownEmojiAtlas::SetAtlasTexture(int32 Page, UTexture2D* InTexture)
+{
+	if (Page < 0)
+	{
+		return;
+	}
+	if (AtlasTextures.Num() <= Page)
+	{
+		AtlasTextures.SetNum(Page + 1);
+	}
 	BrushCache.Empty();
+	AtlasTextures[Page] = InTexture;
+}
+
+void FMarkdownEmojiAtlas::AddEntry(const FString& Codepoint, int32 Page, int32 Col, int32 Row)
+{
+	FEmojiAtlasEntry Entry;
+	Entry.Codepoint = Codepoint;
+	Entry.Page = Page;
+	Entry.GridCol = Col;
+	Entry.GridRow = Row;
+	Entries.Add(Codepoint, Entry);
 }
 
 void FMarkdownEmojiAtlas::AddEntry(const FString& Codepoint, int32 Col, int32 Row)
 {
-	FEmojiAtlasEntry Entry;
-	Entry.Codepoint = Codepoint;
-	Entry.GridCol = Col;
-	Entry.GridRow = Row;
-	Entries.Add(Codepoint, Entry);
+	AddEntry(Codepoint, 0, Col, Row);
 }
 
 void FMarkdownEmojiAtlas::BuildDefaultMapping(const TArray<FString>& SortedCodepoints, int32 CellsPerRow)
@@ -50,13 +70,66 @@ void FMarkdownEmojiAtlas::BuildDefaultMapping(const TArray<FString>& SortedCodep
 
 bool FMarkdownEmojiAtlas::GetGridCoords(const FString& TwemojiCode, int32& OutCol, int32& OutRow) const
 {
-	const FEmojiAtlasEntry* Found = Entries.Find(TwemojiCode);
+	const FEmojiAtlasEntry* Found = nullptr;
+	if (!ResolveAtlasEntry(TwemojiCode, Found))
+	{
+		return false;
+	}
+
 	if (Found)
 	{
 		OutCol = Found->GridCol;
 		OutRow = Found->GridRow;
 		return true;
 	}
+	return false;
+}
+
+bool FMarkdownEmojiAtlas::ResolveAtlasEntry(const FString& TwemojiCode, const FEmojiAtlasEntry*& OutEntry) const
+{
+	OutEntry = Entries.Find(TwemojiCode);
+	if (OutEntry)
+	{
+		return true;
+	}
+
+	TArray<FString> Parts;
+	TwemojiCode.ParseIntoArray(Parts, TEXT("-"), true);
+	if (Parts.Num() <= 0)
+	{
+		return false;
+	}
+
+	TArray<FString> WithoutVariationParts;
+	WithoutVariationParts.Reserve(Parts.Num());
+	for (const FString& Part : Parts)
+	{
+		if (!Part.Equals(TEXT("fe0f"), ESearchCase::IgnoreCase))
+		{
+			WithoutVariationParts.Add(Part);
+		}
+	}
+
+	const FString WithoutVariation = FString::Join(WithoutVariationParts, TEXT("-"));
+	if (!WithoutVariation.Equals(TwemojiCode, ESearchCase::IgnoreCase))
+	{
+		OutEntry = Entries.Find(WithoutVariation);
+		if (OutEntry)
+		{
+			return true;
+		}
+	}
+
+	if (Parts.Num() == 1)
+	{
+		const FString WithVariation = TwemojiCode + TEXT("-fe0f");
+		OutEntry = Entries.Find(WithVariation);
+		if (OutEntry)
+		{
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -75,94 +148,89 @@ bool FMarkdownEmojiAtlas::GetUVRect(const FString& TwemojiCode, FVector2D& OutUV
 
 TSharedPtr<FSlateBrush> FMarkdownEmojiAtlas::GetEmojiBrush(const FString& TwemojiCode, float FontSize)
 {
-	if (!AtlasTexture) return nullptr;
-
-	TSharedPtr<FSlateBrush>* Cached = BrushCache.Find(TwemojiCode);
+	const FString CacheKey = FString::Printf(TEXT("%s@%.1f"), *TwemojiCode, FontSize);
+	TSharedPtr<FSlateBrush>* Cached = BrushCache.Find(CacheKey);
 	if (Cached && Cached->IsValid()) return *Cached;
 
-	FVector2D UVMin, UVMax;
-	if (!GetUVRect(TwemojiCode, UVMin, UVMax)) return nullptr;
+	const FEmojiAtlasEntry* Found = nullptr;
+	if (!ResolveAtlasEntry(TwemojiCode, Found) || !Found)
+	{
+		return nullptr;
+	}
+
+	if (!AtlasTextures.IsValidIndex(Found->Page) || !AtlasTextures[Found->Page])
+	{
+		return nullptr;
+	}
+
+	const float CellU = (float)CellSize / (float)AtlasSize;
+	const FVector2D UVMin((float)Found->GridCol * CellU, (float)Found->GridRow * CellU);
+	const FVector2D UVMax(UVMin.X + CellU, UVMin.Y + CellU);
 
 	auto Brush = MakeShared<FSlateBrush>();
-	Brush->SetResourceObject(AtlasTexture);
-	Brush->ImageSize = FVector2D(AtlasSize);
+	Brush->SetResourceObject(AtlasTextures[Found->Page]);
+	Brush->ImageSize = FVector2D(FontSize);
 	Brush->DrawAs = ESlateBrushDrawType::Image;
+	Brush->SetUVRegion(FBox2f(FVector2f(UVMin), FVector2f(UVMax)));
 
-	// Store UV info in a custom metadata or use dynamic brush
-	// For now, create brush that renders full atlas; UV cropping done in widget via DrawElement
-	BrushCache.Add(TwemojiCode, Brush);
+	BrushCache.Add(CacheKey, Brush);
 	return Brush;
 }
 
-bool FMarkdownEmojiAtlas::LoadMappingFromJsonFile(const FString& JsonFilePath)
+void FMarkdownEmojiAtlas::LoadBuiltInMapping()
 {
-	FString JsonString;
-	if (!FFileHelper::LoadFileToString(JsonString, *JsonFilePath))
-		return false;
-
-	TSharedPtr<FJsonValue> Root;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	if (!FJsonSerializer::Deserialize(Reader, Root))
-		return false;
-
-	const TSharedPtr<FJsonObject>* RootObj;
-	if (!Root->TryGetObject(RootObj)) return false;
-
-	int32 FileCellSize = (*RootObj)->GetIntegerField(TEXT("cell_size"));
-	int32 FileAtlasSize = (*RootObj)->GetIntegerField(TEXT("atlas_size"));
-	SetAtlasConfig(FileCellSize, FileAtlasSize);
-
-	const TArray<TSharedPtr<FJsonValue>>* EntryList;
-	if (!(*RootObj)->TryGetArrayField(TEXT("entries"), EntryList)) return false;
+	SetAtlasConfig(MarkdownEmojiAtlasData::CellSize, MarkdownEmojiAtlasData::AtlasSize);
+	PageCount = MarkdownEmojiAtlasData::PageCount;
 
 	Entries.Empty();
-	for (const auto& EntryVal : *EntryList)
+	for (int32 i = 0; i < MarkdownEmojiAtlasData::EntryCount; ++i)
 	{
-		const TSharedPtr<FJsonObject>* EntryObj;
-		if (!EntryVal->TryGetObject(EntryObj)) continue;
-
-		FString Code = (*EntryObj)->GetStringField(TEXT("codepoint"));
-		int32 Col = (*EntryObj)->GetIntegerField(TEXT("col"));
-		int32 Row = (*EntryObj)->GetIntegerField(TEXT("row"));
-		AddEntry(Code, Col, Row);
+		const FMarkdownEmojiAtlasCodepointEntry& Entry = MarkdownEmojiAtlasData::Entries[i];
+		AddEntry(Entry.Codepoint, Entry.Page, Entry.Col, Entry.Row);
 	}
-
-	return Entries.Num() > 0;
 }
 
 bool FMarkdownEmojiAtlas::AutoLoadAtlas(const FString& ContentEmojiPath)
 {
-	// Build file paths
-	FString PluginDir = FPaths::ProjectPluginsDir() / TEXT("MarkdownSlate");
-	FString AtlasPngPath  = PluginDir / ContentEmojiPath / TEXT("TwemojiAtlas.png");
-	FString AtlasJsonPath = PluginDir / ContentEmojiPath / TEXT("TwemojiAtlas.json");
+	(void)ContentEmojiPath;
+	LoadBuiltInMapping();
 
-	// Load JSON mapping first
-	if (!LoadMappingFromJsonFile(AtlasJsonPath))
+	AtlasTextures.Empty();
+	for (int32 Page = 0; Page < PageCount; ++Page)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MarkdownEmojiAtlas] Failed to load mapping: %s"), *AtlasJsonPath);
+		const FString AssetPath = FString::Printf(TEXT("/MarkdownSlate/Emoji/T_Emoji_%d.T_Emoji_%d"), Page, Page);
+		UTexture2D* LoadedTexture = Cast<UTexture2D>(StaticLoadObject(
+			UTexture2D::StaticClass(),
+			nullptr,
+			*AssetPath));
+		if (!LoadedTexture)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MarkdownEmojiAtlas] Failed to load texture asset: %s"), *AssetPath);
+			continue;
+		}
+		SetAtlasTexture(Page, LoadedTexture);
+	}
+
+	if (AtlasTextures.Num() <= 0)
+	{
+		UTexture2D* LoadedTexture = Cast<UTexture2D>(StaticLoadObject(
+			UTexture2D::StaticClass(),
+			nullptr,
+			TEXT("/MarkdownSlate/Emoji/T_Emoji.T_Emoji")));
+		if (LoadedTexture)
+		{
+			SetAtlasTexture(0, LoadedTexture);
+		}
+	}
+
+	if (AtlasTextures.Num() <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MarkdownEmojiAtlas] Failed to load any atlas texture asset"));
 		return false;
 	}
 
-	// Load atlas texture via FImageUtils
-	IFileManager& FM = IFileManager::Get();
-	if (!FM.FileExists(*AtlasPngPath))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MarkdownEmojiAtlas] Atlas PNG not found: %s"), *AtlasPngPath);
-		return false;
-	}
-
-	UTexture2D* LoadedTexture = FImageUtils::ImportFileAsTexture2D(AtlasPngPath);
-	if (!LoadedTexture)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MarkdownEmojiAtlas] Failed to import texture: %s"), *AtlasPngPath);
-		return false;
-	}
-
-	SetAtlasTexture(LoadedTexture);
-
-	UE_LOG(LogTemp, Log, TEXT("[MarkdownEmojiAtlas] Loaded atlas: %d emoji, %dx%d texture"),
-		Entries.Num(), AtlasSize, AtlasSize);
+	UE_LOG(LogTemp, Log, TEXT("[MarkdownEmojiAtlas] Loaded cooked atlas: %d emoji, %d page(s), %dx%d texture pages"),
+		Entries.Num(), AtlasTextures.Num(), AtlasSize, AtlasSize);
 
 	return true;
 }

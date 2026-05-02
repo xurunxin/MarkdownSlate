@@ -28,6 +28,25 @@ void SMarkdownView::SetMarkdownText(const FString& InMarkdownText)
 void SMarkdownView::SetThemeConfig(const FMarkdownSlateThemeConfig& InTheme)
 {
 	ThemeConfig = InTheme;
+	if (ThemeConfig.bEnableEmojiRendering)
+	{
+		if (!EmojiProvider.IsValid())
+		{
+			EmojiProvider = MakeShared<FMarkdownAtlasEmojiProvider>();
+		}
+		if (!EmojiProvider->SupportsAtlasRendering())
+		{
+			EmojiProvider->GetAtlasPtr()->AutoLoadAtlas(ThemeConfig.TwemojiAssetRoot);
+		}
+		if (EmojiProvider->SupportsAtlasRendering())
+		{
+			ThemeConfig.EmojiProvider = EmojiProvider.Get();
+		}
+	}
+	else
+	{
+		ThemeConfig.EmojiProvider = nullptr;
+	}
 	RenderCache.Invalidate();
 	RefreshDisplay();
 }

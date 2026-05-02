@@ -74,3 +74,11 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Local third-party source checkout used to regenerate Twemoji atlas pages.
+# Generated atlas PNG/JSON files are committed instead.
+DCC_Content/Scripts/twemoji-src/
+
+# Local emoji font experiment assets. Twemoji atlas pages are the committed path.
+DCC_Content/NotoColorEmoji-Regular.ttf
+Content/Fonts/NotoColorEmoji-Regular*.uasset

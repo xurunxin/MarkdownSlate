@@ -5,6 +5,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Slate/MarkdownSlateRenderer.h"
 #include "Cache/MarkdownRenderCache.h"
+#include "Emoji/MarkdownEmojiAssetProvider.h"
 
 DECLARE_DELEGATE_OneParam(FOnMarkdownViewLinkClickedSlate, const FString& /*Url*/);
 
@@ -30,5 +31,6 @@ private:
 	TSharedPtr<SVerticalBox> ContentBox;
 	FOnMarkdownViewLinkClickedSlate OnLinkClicked;
 	FMarkdownSlateThemeConfig ThemeConfig;
+	TSharedPtr<FMarkdownAtlasEmojiProvider> EmojiProvider;
 	FMarkdownRenderCache RenderCache;
 };

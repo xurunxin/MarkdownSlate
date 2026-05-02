@@ -45,6 +45,13 @@ static void CopyBaseTheme(FMarkdownSlateThemeConfig& C, const UMarkdownThemeAsse
 	C.TableBorderThickness = T.TableBorderThickness;
 }
 
+static void ApplyWidgetEmojiOverrides(FMarkdownSlateThemeConfig& C, const UMarkdownWidget& Widget)
+{
+	C.bEnableEmojiRendering = Widget.bEnableEmojiRendering;
+	C.EmojiRenderMode = Widget.EmojiRenderMode;
+	C.EmojiSizeScale = Widget.EmojiSizeScale;
+}
+
 FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 {
 	FMarkdownSlateThemeConfig Config;
@@ -79,6 +86,8 @@ FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 		Config.TableCellPaddingH = TableCellPaddingH; Config.TableCellPaddingV = TableCellPaddingV;
 		Config.TableBorderThickness = TableBorderThickness;
 	}
+
+	ApplyWidgetEmojiOverrides(Config, *this);
 
 	// Ensure DefaultFont is valid
 	if (IsFontEmpty(Config.DefaultFont))
@@ -121,6 +130,18 @@ void UMarkdownWidget::SetMarkdownText(const FString& InText)
 {
 	MarkdownText = InText;
 	if (MySlateWidget.IsValid()) MySlateWidget->SetMarkdownText(InText);
+}
+
+void UMarkdownWidget::SetEnableEmojiRendering(bool bInEnableEmojiRendering)
+{
+	bEnableEmojiRendering = bInEnableEmojiRendering;
+	RefreshDisplayMarkdown();
+}
+
+void UMarkdownWidget::SetEmojiRenderMode(EMarkdownEmojiRenderMode InEmojiRenderMode)
+{
+	EmojiRenderMode = InEmojiRenderMode;
+	RefreshDisplayMarkdown();
 }
 
 void UMarkdownWidget::RefreshDisplayMarkdown()
