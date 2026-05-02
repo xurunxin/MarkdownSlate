@@ -3,6 +3,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -255,6 +256,29 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 		EmphasisStyle.Color = Style.Color; // inherit parent color
 		return RenderInlineChildren(Node, Theme, EmphasisStyle);
 	}
+
+	case EMarkdownRenderNodeType::Strikethrough:
+		{
+			FInlineRenderStyle StrikeStyle = Style;
+			StrikeStyle.Color = Style.Color;
+			return SNew(SOverlay)
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Center).VAlign(VAlign_Center)
+				[
+					RenderInlineChildren(Node, Theme, StrikeStyle)
+				]
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Fill).VAlign(VAlign_Center)
+				[
+					SNew(SBox)
+					.HeightOverride(1.0f)
+					[
+						SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+						.BorderBackgroundColor(Style.Color)
+					]
+				];
+		}
 
 	case EMarkdownRenderNodeType::CodeInline:
 	{
