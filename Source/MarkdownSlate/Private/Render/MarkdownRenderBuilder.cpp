@@ -1,4 +1,5 @@
 #include "Render/MarkdownRenderBuilder.h"
+#include "Table/MarkdownTableModel.h"
 
 static EMarkdownRenderNodeType MapBlockToRenderType(EMarkdownBlockType InType)
 {
@@ -35,109 +36,136 @@ static EMarkdownRenderNodeType MapSpanToRenderType(EMarkdownSpanType InType)
 	}
 }
 
-TSharedPtr<FMarkdownRenderNode> FMarkdownRenderBuilder::Build(const TSharedPtr<FMarkdownBlockNode>& RootAst)
+static void BuildTable(const TSharedPtr<FMarkdownBlockNode>& AstNode, const TSharedPtr<FMarkdownRenderNode>& RenderNode,
+	FMarkdownRenderBuilder& Builder)
 {
-	if (!RootAst.IsValid())
+	auto TableModel = MakeShared<FMarkdownTableModel>();
+	TArray<FMarkdownTableCell> CurrentRow;
+
+	for (const auto& Section : AstNode->Children)
 	{
-		return MakeShared<FMarkdownRenderNode>();
+		if (!Section->IsBlockNode()) continue;
+		auto SecBlock = StaticCastSharedPtr<FMarkdownBlockNode>(Section);
+		if (SecBlock->Type != EMarkdownBlockType::TableHead && SecBlock->Type != EMarkdownBlockType::TableBody)
+			continue;
+
+		if (SecBlock->Type == EMarkdownBlockType::TableHead)
+			TableModel->bHasColumnHeader = true;
+
+		for (const auto& RowNode : SecBlock->Children)
+		{
+			if (!RowNode->IsBlockNode()) continue;
+			auto RowBlock = StaticCastSharedPtr<FMarkdownBlockNode>(RowNode);
+			if (RowBlock->Type != EMarkdownBlockType::TableRow) continue;
+
+			CurrentRow.Reset();
+			for (const auto& CellNode : RowBlock->Children)
+			{
+				FMarkdownTableCell Cell;
+				Cell.bIsHeader = (SecBlock->Type == EMarkdownBlockType::TableHead);
+				if (CellNode->IsBlockNode())
+				{
+					auto CellRender = MakeShared<FMarkdownRenderNode>();
+					CellRender->Type = EMarkdownRenderNodeType::Container;
+					auto CellBlock = StaticCastSharedPtr<FMarkdownBlockNode>(CellNode);
+					for (const auto& InnerChild : CellBlock->Children)
+					{
+						if (InnerChild->IsTextNode())
+						{
+							auto TR = MakeShared<FMarkdownRenderNode>();
+							TR->Type = EMarkdownRenderNodeType::PlainText;
+							TR->TextContent = FText::FromString(
+								StaticCastSharedPtr<FMarkdownTextNode>(InnerChild)->Text);
+							CellRender->Children.Add(TR);
+						}
+						else if (InnerChild->IsSpanNode())
+							Builder.ConvertSpan(StaticCastSharedPtr<FMarkdownSpanNode>(InnerChild), CellRender);
+						else if (InnerChild->IsBlockNode())
+							Builder.ConvertBlock(StaticCastSharedPtr<FMarkdownBlockNode>(InnerChild), CellRender);
+					}
+					Cell.ContentNode = CellRender;
+				}
+				CurrentRow.Add(Cell);
+			}
+			TableModel->Rows.Add(CurrentRow);
+		}
 	}
 
-	TSharedPtr<FMarkdownRenderNode> Root = MakeShared<FMarkdownRenderNode>();
-	Root->Type = EMarkdownRenderNodeType::Container;
+	if (TableModel->Rows.Num() > 0)
+		TableModel->ColumnCount = TableModel->Rows[0].Num();
+	RenderNode->TableModel = TableModel;
+}
 
+static void ProcessAstChildren(const TSharedPtr<FMarkdownAstNode>& AstNode,
+	const TSharedPtr<FMarkdownRenderNode>& RenderNode, FMarkdownRenderBuilder& Builder)
+{
+	for (const auto& Child : AstNode->Children)
+	{
+		if (Child->IsTextNode())
+		{
+			auto TR = MakeShared<FMarkdownRenderNode>();
+			TR->Type = EMarkdownRenderNodeType::PlainText;
+			TR->TextContent = FText::FromString(StaticCastSharedPtr<FMarkdownTextNode>(Child)->Text);
+			TR->Parent = RenderNode; RenderNode->Children.Add(TR);
+		}
+		else if (Child->IsSpanNode())
+			Builder.ConvertSpan(StaticCastSharedPtr<FMarkdownSpanNode>(Child), RenderNode);
+		else if (Child->IsBlockNode())
+			Builder.ConvertBlock(StaticCastSharedPtr<FMarkdownBlockNode>(Child), RenderNode);
+	}
+}
+
+TSharedPtr<FMarkdownRenderNode> FMarkdownRenderBuilder::Build(const TSharedPtr<FMarkdownBlockNode>& RootAst)
+{
+	if (!RootAst.IsValid()) return MakeShared<FMarkdownRenderNode>();
+	auto Root = MakeShared<FMarkdownRenderNode>();
+	Root->Type = EMarkdownRenderNodeType::Container;
 	for (const auto& Child : RootAst->Children)
 	{
 		if (Child->IsBlockNode())
-		{
 			ConvertBlock(StaticCastSharedPtr<FMarkdownBlockNode>(Child), Root);
-		}
 		else if (Child->IsSpanNode())
-		{
 			ConvertSpan(StaticCastSharedPtr<FMarkdownSpanNode>(Child), Root);
-		}
 		else if (Child->IsTextNode())
 		{
-			auto TextNode = StaticCastSharedPtr<FMarkdownTextNode>(Child);
-			auto RenderNode = MakeShared<FMarkdownRenderNode>();
-			RenderNode->Type = EMarkdownRenderNodeType::PlainText;
-			RenderNode->TextContent = FText::FromString(TextNode->Text);
-			RenderNode->Parent = Root;
-			Root->Children.Add(RenderNode);
+			auto TR = MakeShared<FMarkdownRenderNode>();
+			TR->Type = EMarkdownRenderNodeType::PlainText;
+			TR->TextContent = FText::FromString(StaticCastSharedPtr<FMarkdownTextNode>(Child)->Text);
+			TR->Parent = Root; Root->Children.Add(TR);
 		}
 	}
-
 	return Root;
 }
 
 void FMarkdownRenderBuilder::ConvertBlock(const TSharedPtr<FMarkdownBlockNode>& AstNode, const TSharedPtr<FMarkdownRenderNode>& OutParent)
 {
 	if (!AstNode.IsValid()) return;
+	auto RN = MakeShared<FMarkdownRenderNode>();
+	RN->Type = MapBlockToRenderType(AstNode->Type);
+	RN->HeadingLevel = AstNode->HeadingLevel;
+	RN->CodeLanguage = AstNode->CodeLanguage;
+	RN->OrderedListStart = AstNode->OrderedListStart;
+	RN->bIsTightList = AstNode->bIsTightList;
+	RN->bIsTaskItem = AstNode->bIsTaskItem;
+	RN->TaskMark = AstNode->TaskMark;
+	RN->Parent = OutParent;
+	OutParent->Children.Add(RN);
 
-	auto RenderNode = MakeShared<FMarkdownRenderNode>();
-	RenderNode->Type = MapBlockToRenderType(AstNode->Type);
-	RenderNode->HeadingLevel = AstNode->HeadingLevel;
-	RenderNode->CodeLanguage = AstNode->CodeLanguage;
-	RenderNode->OrderedListStart = AstNode->OrderedListStart;
-	RenderNode->bIsTightList = AstNode->bIsTightList;
-	RenderNode->Parent = OutParent;
-
-	OutParent->Children.Add(RenderNode);
-
-	// Process children in order (text, spans, sub-blocks are interleaved)
-	for (const auto& Child : AstNode->Children)
-	{
-		if (Child->IsTextNode())
-		{
-			auto TextNode = StaticCastSharedPtr<FMarkdownTextNode>(Child);
-			auto TextRender = MakeShared<FMarkdownRenderNode>();
-			TextRender->Type = EMarkdownRenderNodeType::PlainText;
-			TextRender->TextContent = FText::FromString(TextNode->Text);
-			TextRender->Parent = RenderNode;
-			RenderNode->Children.Add(TextRender);
-		}
-		else if (Child->IsSpanNode())
-		{
-			ConvertSpan(StaticCastSharedPtr<FMarkdownSpanNode>(Child), RenderNode);
-		}
-		else if (Child->IsBlockNode())
-		{
-			ConvertBlock(StaticCastSharedPtr<FMarkdownBlockNode>(Child), RenderNode);
-		}
-	}
+	if (AstNode->Type == EMarkdownBlockType::Table)
+		BuildTable(AstNode, RN, *this);
+	else
+		ProcessAstChildren(AstNode, RN, *this);
 }
 
 void FMarkdownRenderBuilder::ConvertSpan(const TSharedPtr<FMarkdownSpanNode>& AstNode, const TSharedPtr<FMarkdownRenderNode>& OutParent)
 {
 	if (!AstNode.IsValid()) return;
-
-	auto RenderNode = MakeShared<FMarkdownRenderNode>();
-	RenderNode->Type = MapSpanToRenderType(AstNode->Type);
-	RenderNode->LinkUrl = AstNode->Href;
-	RenderNode->ImageUrl = AstNode->ImageSrc;
-	RenderNode->ImageTitle = AstNode->ImageTitle;
-	RenderNode->Parent = OutParent;
-
-	OutParent->Children.Add(RenderNode);
-
-	// Process children in order (text nodes are inline content of the span)
-	for (const auto& Child : AstNode->Children)
-	{
-		if (Child->IsTextNode())
-		{
-			auto TextNode = StaticCastSharedPtr<FMarkdownTextNode>(Child);
-			auto TextRender = MakeShared<FMarkdownRenderNode>();
-			TextRender->Type = EMarkdownRenderNodeType::PlainText;
-			TextRender->TextContent = FText::FromString(TextNode->Text);
-			TextRender->Parent = RenderNode;
-			RenderNode->Children.Add(TextRender);
-		}
-		else if (Child->IsSpanNode())
-		{
-			ConvertSpan(StaticCastSharedPtr<FMarkdownSpanNode>(Child), RenderNode);
-		}
-		else if (Child->IsBlockNode())
-		{
-			ConvertBlock(StaticCastSharedPtr<FMarkdownBlockNode>(Child), RenderNode);
-		}
-	}
+	auto RN = MakeShared<FMarkdownRenderNode>();
+	RN->Type = MapSpanToRenderType(AstNode->Type);
+	RN->LinkUrl = AstNode->Href;
+	RN->ImageUrl = AstNode->ImageSrc;
+	RN->ImageTitle = AstNode->ImageTitle;
+	RN->Parent = OutParent;
+	OutParent->Children.Add(RN);
+	ProcessAstChildren(AstNode, RN, *this);
 }

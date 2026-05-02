@@ -1,4 +1,5 @@
-#include "Slate/MarkdownSlateRenderer.h"
+﻿#include "Slate/MarkdownSlateRenderer.h"
+#include "Table/SMarkdownTable.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -7,6 +8,8 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/CoreStyle.h"
+#include "Emoji/MarkdownEmojiScanner.h"
+#include "Emoji/SMarkdownEmojiRun.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 
 // Cached rounded brushes — updated when theme changes, shared across all widgets
@@ -40,11 +43,19 @@ FMarkdownSlateThemeConfig FMarkdownSlateThemeConfig::Default()
 {
 	FMarkdownSlateThemeConfig Config;
 	Config.DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", Config.BodyFontSize);
-	Config.BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", Config.BodyFontSize);
-	Config.ItalicFont = FCoreStyle::GetDefaultFontStyle("Italic", Config.BodyFontSize);
-	Config.BoldItalicFont = FCoreStyle::GetDefaultFontStyle("BoldItalic", Config.BodyFontSize);
-	Config.MonospaceFont = FCoreStyle::GetDefaultFontStyle("Mono", Config.CodeFontSize);
 	return Config;
+}
+
+uint32 FMarkdownSlateThemeConfig::ComputeHash() const
+{
+	uint32 Hash = 0;
+	Hash = HashCombine(Hash, GetTypeHash(BodyFontSize));
+	Hash = HashCombine(Hash, GetTypeHash(WrapTextWidth));
+	Hash = HashCombine(Hash, GetTypeHash(ParagraphSpacing));
+	Hash = HashCombine(Hash, GetTypeHash(HeadingColor.R) ^ GetTypeHash(HeadingColor.G) ^ GetTypeHash(HeadingColor.B));
+	Hash = HashCombine(Hash, GetTypeHash(BodyTextColor.R) ^ GetTypeHash(BodyTextColor.G) ^ GetTypeHash(BodyTextColor.B));
+	Hash = HashCombine(Hash, GetTypeHash(LinkColor.R) ^ GetTypeHash(LinkColor.G) ^ GetTypeHash(LinkColor.B));
+	return Hash;
 }
 
 static FSlateFontInfo BuildFont(const FSlateFontInfo& BaseFont, int32 Size)
@@ -74,8 +85,6 @@ static FText GetInlineText(const TSharedPtr<FMarkdownRenderNode>& Node)
 	return FText::FromString(Combined);
 }
 
-static TSharedRef<SWidget> RenderInlines(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme);
-
 static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme)
 {
 	if (!Node.IsValid()) return SNullWidget::NullWidget;
@@ -83,22 +92,60 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 	switch (Node->Type)
 	{
 	case EMarkdownRenderNodeType::PlainText:
+	{
+		if (Theme.bEnableEmojiRendering)
+		{
+			FMarkdownEmojiScanner Scanner;
+			TArray<FMarkdownEmojiRun> Runs = Scanner.ScanText(Node->TextContent.ToString());
+			if (Runs.Num() > 0)
+			{
+				TSharedRef<SWrapBox> WrapBox = SNew(SWrapBox).UseAllottedSize(true);
+				FMarkdownEmojiConfig EmojiCfg;
+				EmojiCfg.bEnableEmojiRendering = Theme.bEnableEmojiRendering;
+				EmojiCfg.RenderMode = Theme.EmojiRenderMode;
+				EmojiCfg.TwemojiAssetRoot = Theme.TwemojiAssetRoot;
+				EmojiCfg.EmojiSizeScale = Theme.EmojiSizeScale;
+				EmojiCfg.bAllowTwemojiFallback = Theme.bAllowTwemojiFallback;
+
+				for (const auto& Run : Runs)
+				{
+					WrapBox->AddSlot()
+					[
+						SNew(SMarkdownEmojiRun)
+						.Run(Run)
+								.FontInfo(Theme.DefaultFont)
+						.FontSize(Theme.BodyFontSize)
+						.TextColor(Theme.BodyTextColor)
+						.EmojiProvider(Theme.EmojiProvider)
+						.Config(EmojiCfg)
+					];
+				}
+				return WrapBox;
+			}
+		}
 		return SNew(STextBlock)
 			.Text(Node->TextContent)
 			.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
 			.ColorAndOpacity(FSlateColor(Theme.BodyTextColor));
+	}
 
 	case EMarkdownRenderNodeType::Strong:
+	{
+		FSlateFontInfo Font = BuildFont(Theme.DefaultFont, Theme.BodyFontSize);
 		return SNew(STextBlock)
 			.Text(GetInlineText(Node))
-			.Font(BuildFont(Theme.BoldFont, Theme.BodyFontSize))
+			.Font(Font)
 			.ColorAndOpacity(FSlateColor(Theme.StrongColor));
+	}
 
 	case EMarkdownRenderNodeType::Emphasis:
+	{
+		FSlateFontInfo Font = BuildFont(Theme.DefaultFont, Theme.BodyFontSize);
 		return SNew(STextBlock)
 			.Text(GetInlineText(Node))
-			.Font(BuildFont(Theme.ItalicFont, Theme.BodyFontSize))
+			.Font(Font)
 			.ColorAndOpacity(FSlateColor(Theme.EmphasisColor));
+	}
 
 	case EMarkdownRenderNodeType::CodeInline:
 	{
@@ -109,7 +156,7 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 			[
 				SNew(STextBlock)
 				.Text(GetInlineText(Node))
-				.Font(BuildFont(Theme.MonospaceFont, Theme.CodeFontSize))
+				.Font(BuildFont(Theme.DefaultFont, FMath::Max(8, (int32)(Theme.BodyFontSize * 0.92f))))
 				.ColorAndOpacity(FSlateColor(Theme.CodeTextColor))
 			];
 	}
@@ -157,7 +204,7 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 				SNew(STextBlock)
 				.Text(FText::FromString(FString::Printf(TEXT("[Image: %s]"),
 					Node->ImageUrl.IsEmpty() ? *GetInlineText(Node).ToString() : *Node->ImageUrl)))
-				.Font(BuildFont(Theme.ItalicFont, Theme.BodyFontSize))
+				.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
 				.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))
 			];
 
@@ -169,7 +216,7 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 	}
 }
 
-static TSharedRef<SWidget> RenderInlines(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme)
+TSharedRef<SWidget> FMarkdownSlateRenderer::RenderInlines(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme)
 {
 	if (!Node.IsValid() || Node->Children.Num() == 0)
 	{
@@ -218,7 +265,7 @@ static TSharedRef<SWidget> CreateCodeBlockWidget(const FMarkdownRenderNode& Node
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(CodeText))
-				.Font(BuildFont(Theme.MonospaceFont, Theme.CodeFontSize))
+				.Font(BuildFont(Theme.DefaultFont, FMath::Max(8, (int32)(Theme.BodyFontSize * 0.92f))))
 				.ColorAndOpacity(FSlateColor(Theme.CodeTextColor))
 				.AutoWrapText(false)
 			]
@@ -228,7 +275,13 @@ static TSharedRef<SWidget> CreateCodeBlockWidget(const FMarkdownRenderNode& Node
 static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node, int32 Index, bool bOrdered, int32 StartIndex, const FMarkdownSlateThemeConfig& Theme)
 {
 	FString Prefix;
-	if (bOrdered)
+	if (Node.bIsTaskItem)
+	{
+		Prefix = (Node.TaskMark == 'x' || Node.TaskMark == 'X')
+			? TEXT("\u2611  ")   // checked
+			: TEXT("\u2610  ");  // unchecked
+	}
+	else if (bOrdered)
 	{
 		Prefix = FString::Printf(TEXT("%d. "), StartIndex + Index);
 	}
@@ -241,24 +294,82 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 		.Orientation(Orient_Horizontal)
 		.UseAllottedSize(true);
 
-	// List marker
+	// Marker (bullet / checkbox / number)
 	WrapBox->AddSlot()
 		.VAlign(VAlign_Center)
+		.Padding(FMargin(0, 0, 2, 0))
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(Prefix))
 			.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
-			.ColorAndOpacity(FSlateColor(Theme.BodyTextColor))
+			.ColorAndOpacity(FSlateColor(Theme.ListMarkerColor))
 		];
 
-	// Inline content
+	// Inline content — use ListTextColor for body text
+	FMarkdownSlateThemeConfig ListTheme = Theme;
+	ListTheme.BodyTextColor = Theme.ListTextColor;
+	ListTheme.bEnableEmojiRendering = false; // Disable emoji scanning to avoid wrap-box break
+
 	for (const auto& Child : Node.Children)
 	{
+		if (Child->Type == EMarkdownRenderNodeType::UnorderedList ||
+			Child->Type == EMarkdownRenderNodeType::OrderedList ||
+			Child->Type == EMarkdownRenderNodeType::CodeBlock ||
+			Child->Type == EMarkdownRenderNodeType::Table)
+		{
+			continue;
+		}
 		WrapBox->AddSlot()
 			.VAlign(VAlign_Center)
 			[
-				RenderInlineNode(Child, Theme)
+				RenderInlineNode(Child, ListTheme)
 			];
+	}
+
+	// Collect block-level children (nested lists, code blocks)
+	TArray<TSharedPtr<FMarkdownRenderNode>> BlockChildren;
+	for (const auto& Child : Node.Children)
+	{
+		if (Child->Type == EMarkdownRenderNodeType::UnorderedList ||
+			Child->Type == EMarkdownRenderNodeType::OrderedList ||
+			Child->Type == EMarkdownRenderNodeType::CodeBlock ||
+			Child->Type == EMarkdownRenderNodeType::Table)
+		{
+			BlockChildren.Add(Child);
+		}
+	}
+
+	if (BlockChildren.Num() > 0)
+	{
+		TSharedRef<SVerticalBox> SubListBox = SNew(SVerticalBox);
+		for (const auto& BC : BlockChildren)
+		{
+			if (BC->Type == EMarkdownRenderNodeType::UnorderedList ||
+				BC->Type == EMarkdownRenderNodeType::OrderedList)
+			{
+				bool bOL = (BC->Type == EMarkdownRenderNodeType::OrderedList);
+				int32 StIdx = BC->OrderedListStart;
+				for (int32 i = 0; i < BC->Children.Num(); ++i)
+				{
+					SubListBox->AddSlot().AutoHeight().Padding(0, 1)
+					[
+						CreateListItemWidget(*BC->Children[i], i, bOL, StIdx, ListTheme)
+					];
+				}
+			}
+			else
+			{
+				SubListBox->AddSlot().AutoHeight()
+				[
+					FMarkdownSlateRenderer::RenderNode(BC, ListTheme)
+				];
+			}
+		}
+
+		TSharedRef<SVerticalBox> Outer = SNew(SVerticalBox);
+		Outer->AddSlot().AutoHeight()[WrapBox];
+		Outer->AddSlot().AutoHeight().Padding(Theme.ListItemIndent, 0, 0, 0)[SubListBox];
+		return Outer;
 	}
 
 	return WrapBox;
@@ -278,12 +389,12 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 		int32 FontSize = Theme.BodyFontSize;
 		switch (Node->HeadingLevel)
 		{
-		case 1: FontSize = Theme.H1FontSize; break;
-		case 2: FontSize = Theme.H2FontSize; break;
-		case 3: FontSize = Theme.H3FontSize; break;
-		case 4: FontSize = Theme.H4FontSize; break;
-		case 5: FontSize = Theme.H5FontSize; break;
-		default: FontSize = Theme.H6FontSize; break;
+		case 1: FontSize = Theme.BodyFontSize * 2.0f; break;
+		case 2: FontSize = Theme.BodyFontSize * 1.7f; break;
+		case 3: FontSize = Theme.BodyFontSize * 1.5f; break;
+		case 4: FontSize = Theme.BodyFontSize * 1.3f; break;
+		case 5: FontSize = Theme.BodyFontSize * 1.15f; break;
+		default: FontSize = Theme.BodyFontSize * 1.05f; break;
 		}
 
 		// If heading has inline children, render them with heading font
@@ -301,7 +412,7 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 					[
 						SNew(STextBlock)
 						.Text(Child->TextContent)
-						.Font(BuildFont(Theme.BoldFont, FontSize))
+						.Font(BuildFont(Theme.DefaultFont, FontSize))
 						.ColorAndOpacity(FSlateColor(Theme.HeadingColor))
 					];
 				}
@@ -318,7 +429,7 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 
 		return SNew(STextBlock)
 			.Text(Node->TextContent)
-			.Font(BuildFont(Theme.BoldFont, FontSize))
+			.Font(BuildFont(Theme.DefaultFont, FontSize))
 			.ColorAndOpacity(FSlateColor(Theme.HeadingColor))
 			.WrapTextAt(Theme.WrapTextWidth);
 	}
@@ -347,7 +458,7 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 					: static_cast<TSharedRef<SWidget>>(
 						SNew(STextBlock)
 						.Text(Node->TextContent)
-						.Font(BuildFont(Theme.ItalicFont, Theme.BodyFontSize))
+						.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
 						.ColorAndOpacity(FSlateColor(Theme.BodyTextColor))
 						.WrapTextAt(Theme.WrapTextWidth))
 			];
@@ -389,7 +500,7 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::Render(const TSharedPtr<FMarkdownRen
 			{
 				VBox->AddSlot()
 					.AutoHeight()
-					.Padding(0, 1)
+					.Padding(Theme.ListItemIndent, 1, 0, 1)
 					[
 						CreateListItemWidget(*Child->Children[i], i, bOrdered, StartIdx, Theme)
 					];
@@ -402,6 +513,16 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::Render(const TSharedPtr<FMarkdownRen
 				.Padding(0, 4)
 				[
 					CreateCodeBlockWidget(*Child, Theme)
+				];
+			break;
+		case EMarkdownRenderNodeType::Table:
+			VBox->AddSlot()
+				.AutoHeight()
+				.Padding(0, 4)
+				[
+					SNew(SMarkdownTable)
+					.TableModel(Child->TableModel)
+					.ThemeConfig(Theme)
 				];
 			break;
 		default:

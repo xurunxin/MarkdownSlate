@@ -8,8 +8,6 @@ class MARKDOWNSLATE_API FMarkdownRenderBuilder
 {
 public:
 	TSharedPtr<FMarkdownRenderNode> Build(const TSharedPtr<FMarkdownBlockNode>& RootAst);
-
-private:
 	void ConvertBlock(const TSharedPtr<FMarkdownBlockNode>& AstNode, const TSharedPtr<FMarkdownRenderNode>& OutParent);
 	void ConvertSpan(const TSharedPtr<FMarkdownSpanNode>& AstNode, const TSharedPtr<FMarkdownRenderNode>& OutParent);
 };

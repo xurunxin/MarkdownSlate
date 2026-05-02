@@ -5,28 +5,23 @@
 UMarkdownWidget::UMarkdownWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	DefaultFont     = FCoreStyle::GetDefaultFontStyle("Regular", BodyFontSize);
-	BoldFont        = FCoreStyle::GetDefaultFontStyle("Bold", BodyFontSize);
-	ItalicFont      = FCoreStyle::GetDefaultFontStyle("Italic", BodyFontSize);
-	BoldItalicFont  = FCoreStyle::GetDefaultFontStyle("BoldItalic", BodyFontSize);
-	MonospaceFont   = FCoreStyle::GetDefaultFontStyle("Mono", CodeFontSize);
+	DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", BodyFontSize);
+}
+
+static bool IsFontEmpty(const FSlateFontInfo& F)
+{
+	if (F.FontObject != nullptr) return false;
+	const TSharedPtr<const FCompositeFont>& CF = F.CompositeFont;
+	return !CF.IsValid() || CF->DefaultTypeface.Fonts.Num() == 0;
 }
 
 static void CopyBaseTheme(FMarkdownSlateThemeConfig& C, const UMarkdownThemeAsset& T)
 {
-	C.DefaultFont     = T.DefaultFont;
-	C.BoldFont        = T.BoldFont;
-	C.ItalicFont      = T.ItalicFont;
-	C.BoldItalicFont  = T.BoldItalicFont;
-	C.MonospaceFont   = T.MonospaceFont;
-	C.H1FontSize = T.H1FontSize; C.H2FontSize = T.H2FontSize;
-	C.H3FontSize = T.H3FontSize; C.H4FontSize = T.H4FontSize;
-	C.H5FontSize = T.H5FontSize; C.H6FontSize = T.H6FontSize;
-	C.BodyFontSize = T.BodyFontSize; C.CodeFontSize = T.CodeFontSize;
+	C.BodyFontSize = T.BodyFontSize;
 	C.HeadingColor = T.HeadingColor; C.BodyTextColor = T.BodyTextColor;
 	C.StrongColor = T.StrongColor; C.EmphasisColor = T.EmphasisColor;
 	C.CodeBackgroundColor = T.CodeBackgroundColor; C.CodeTextColor = T.CodeTextColor;
-	C.LinkColor = T.LinkColor; C.BackgroundColor = T.BackgroundColor;
+	C.LinkColor = T.LinkColor;
 	C.BlockquoteBackgroundColor = T.BlockquoteBackgroundColor;
 	C.ParagraphSpacing = T.ParagraphSpacing; C.WrapTextWidth = T.WrapTextWidth;
 	C.CodeCornerRadius = T.CodeCornerRadius;
@@ -39,30 +34,29 @@ static void CopyBaseTheme(FMarkdownSlateThemeConfig& C, const UMarkdownThemeAsse
 	C.BlockquotePaddingH = T.BlockquotePaddingH; C.BlockquotePaddingV = T.BlockquotePaddingV;
 	C.HorizontalRuleThickness = T.HorizontalRuleThickness;
 	C.HorizontalRuleColor = T.HorizontalRuleColor;
+	C.bEnableEmojiRendering = T.bEnableEmojiRendering;
+	C.EmojiRenderMode = T.EmojiRenderMode; C.EmojiSizeScale = T.EmojiSizeScale;
+	C.ListMarkerColor = T.ListMarkerColor; C.ListTextColor = T.ListTextColor;
+	C.ListItemIndent = T.ListItemIndent;
+	C.TableHeaderBgColor = T.TableHeaderBgColor;
+	C.TableRowEvenBgColor = T.TableRowEvenBgColor; C.TableRowOddBgColor = T.TableRowOddBgColor;
+	C.TableBorderColor = T.TableBorderColor;
+	C.TableCellPaddingH = T.TableCellPaddingH; C.TableCellPaddingV = T.TableCellPaddingV;
+	C.TableBorderThickness = T.TableBorderThickness;
 }
 
 FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 {
 	FMarkdownSlateThemeConfig Config;
-	if (ThemePreset)
-	{
-		CopyBaseTheme(Config, *ThemePreset);
-	}
+	if (ThemePreset) { CopyBaseTheme(Config, *ThemePreset); Config.DefaultFont = DefaultFont; }
 	else
 	{
-		Config.DefaultFont     = DefaultFont;
-		Config.BoldFont        = BoldFont;
-		Config.ItalicFont      = ItalicFont;
-		Config.BoldItalicFont  = BoldItalicFont;
-		Config.MonospaceFont   = MonospaceFont;
-		Config.H1FontSize = H1FontSize; Config.H2FontSize = H2FontSize;
-		Config.H3FontSize = H3FontSize; Config.H4FontSize = H4FontSize;
-		Config.H5FontSize = H5FontSize; Config.H6FontSize = H6FontSize;
-		Config.BodyFontSize = BodyFontSize; Config.CodeFontSize = CodeFontSize;
+		Config.DefaultFont = DefaultFont;
+		Config.BodyFontSize = BodyFontSize;
 		Config.HeadingColor = HeadingColor; Config.BodyTextColor = BodyTextColor;
 		Config.StrongColor = StrongColor; Config.EmphasisColor = EmphasisColor;
 		Config.CodeBackgroundColor = CodeBackgroundColor; Config.CodeTextColor = CodeTextColor;
-		Config.LinkColor = LinkColor; Config.BackgroundColor = BackgroundColor;
+		Config.LinkColor = LinkColor;
 		Config.BlockquoteBackgroundColor = BlockquoteBackgroundColor;
 		Config.ParagraphSpacing = ParagraphSpacing; Config.WrapTextWidth = WrapTextWidth;
 		Config.CodeCornerRadius = CodeCornerRadius;
@@ -75,7 +69,22 @@ FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 		Config.BlockquotePaddingH = BlockquotePaddingH; Config.BlockquotePaddingV = BlockquotePaddingV;
 		Config.HorizontalRuleThickness = HorizontalRuleThickness;
 		Config.HorizontalRuleColor = HorizontalRuleColor;
+		Config.bEnableEmojiRendering = bEnableEmojiRendering;
+		Config.EmojiRenderMode = EmojiRenderMode; Config.EmojiSizeScale = EmojiSizeScale;
+		Config.ListMarkerColor = ListMarkerColor; Config.ListTextColor = ListTextColor;
+		Config.ListItemIndent = ListItemIndent;
+		Config.TableHeaderBgColor = TableHeaderBgColor;
+		Config.TableRowEvenBgColor = TableRowEvenBgColor; Config.TableRowOddBgColor = TableRowOddBgColor;
+		Config.TableBorderColor = TableBorderColor;
+		Config.TableCellPaddingH = TableCellPaddingH; Config.TableCellPaddingV = TableCellPaddingV;
+		Config.TableBorderThickness = TableBorderThickness;
 	}
+
+	// Ensure DefaultFont is valid
+	if (IsFontEmpty(Config.DefaultFont))
+		Config.DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", Config.BodyFontSize);
+	Config.DefaultFont.Size = Config.BodyFontSize;
+
 	return Config;
 }
 
@@ -83,7 +92,6 @@ TSharedRef<SWidget> UMarkdownWidget::RebuildWidget()
 {
 	auto Config = BuildThemeConfig();
 	Config.OnLinkClicked = [this](const FString& Url) { OnNativeLinkClicked(Url); };
-
 	MySlateWidget = SNew(SMarkdownView)
 		.MarkdownText(MarkdownText)
 		.OnLinkClicked(FOnMarkdownViewLinkClickedSlate::CreateUObject(this, &UMarkdownWidget::OnNativeLinkClicked));

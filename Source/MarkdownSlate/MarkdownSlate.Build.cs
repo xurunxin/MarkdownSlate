@@ -17,6 +17,8 @@ public class MarkdownSlate : ModuleRules
 			"InputCore",
 			"MarkdownSlateMD4C",
 			"DeveloperSettings",
+			"Json",
+			"JsonUtilities",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

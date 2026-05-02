@@ -21,52 +21,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Content", meta = (MultiLine = true))
 	FString MarkdownText;
 
-	// Theme preset (optional override)
+	// Theme preset
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Theme")
 	TObjectPtr<UMarkdownThemeAsset> ThemePreset;
 
-	// Fonts
+	// Font
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Font")
 	FSlateFontInfo DefaultFont;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Font")
-	FSlateFontInfo BoldFont;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Font")
-	FSlateFontInfo ItalicFont;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Font")
-	FSlateFontInfo BoldItalicFont;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Font")
-	FSlateFontInfo MonospaceFont;
-
-	// Heading Sizes
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H1FontSize = 28;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H2FontSize = 22;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H3FontSize = 19;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H4FontSize = 16;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H5FontSize = 14;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	int32 H6FontSize = 13;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
-	FLinearColor HeadingColor = FLinearColor::White;
-
-	// Body
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Body")
 	int32 BodyFontSize = 12;
 
+	// Body
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Body")
 	FLinearColor BodyTextColor = FLinearColor(0.9f, 0.9f, 0.9f);
 
@@ -76,10 +42,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Body")
 	FLinearColor EmphasisColor = FLinearColor(0.9f, 0.9f, 0.9f);
 
-	// Code
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Code")
-	int32 CodeFontSize = 11;
+	// Heading
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Heading")
+	FLinearColor HeadingColor = FLinearColor::White;
 
+	// Code
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Code")
 	FLinearColor CodeBackgroundColor = FLinearColor(0.1f, 0.1f, 0.12f);
 
@@ -106,11 +73,7 @@ public:
 
 	// Link
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Link")
-	FLinearColor LinkColor = FLinearColor(0.25f, 0.55f, 1.0f);
-
-	// Background
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Background")
-	FLinearColor BackgroundColor = FLinearColor(0.08f, 0.08f, 0.1f);
+	FLinearColor LinkColor = FLinearColor(0.3f, 0.6f, 1.0f);
 
 	// Blockquote
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Blockquote")
@@ -131,12 +94,54 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Blockquote")
 	float BlockquotePaddingV = 6.0f;
 
-	// Horizontal Rule
+	// List
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|List")
+	FLinearColor ListMarkerColor = FLinearColor(0.7f, 0.7f, 0.7f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|List")
+	FLinearColor ListTextColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|List")
+	float ListItemIndent = 16.0f;
+
+	// Table
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	FLinearColor TableHeaderBgColor = FLinearColor(0.15f, 0.15f, 0.18f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	FLinearColor TableRowEvenBgColor = FLinearColor(0.09f, 0.09f, 0.11f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	FLinearColor TableRowOddBgColor = FLinearColor(0.06f, 0.06f, 0.08f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	FLinearColor TableBorderColor = FLinearColor(0.12f, 0.12f, 0.14f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	float TableCellPaddingH = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	float TableCellPaddingV = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Table")
+	float TableBorderThickness = 1.0f;
+
+	// Separator
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Separator")
 	float HorizontalRuleThickness = 2.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Separator")
 	FLinearColor HorizontalRuleColor = FLinearColor(0.35f, 0.35f, 0.4f);
+
+	// Emoji
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Emoji")
+	bool bEnableEmojiRendering = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Emoji")
+	EMarkdownEmojiRenderMode EmojiRenderMode = EMarkdownEmojiRenderMode::PlatformFontFirst;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Emoji")
+	float EmojiSizeScale = 1.0f;
 
 	// Layout
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Markdown|Layout")

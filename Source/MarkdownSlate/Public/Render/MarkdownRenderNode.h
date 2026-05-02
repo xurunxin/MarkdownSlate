@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Markdown/MarkdownNodeTypes.h"
 
+struct FMarkdownTableModel;
+
 enum class EMarkdownRenderNodeType : uint8
 {
 	Container,
@@ -41,4 +43,8 @@ struct FMarkdownRenderNode
 	FString CodeLanguage;
 	int32 OrderedListStart = 1;
 	bool bIsTightList = true;
+	bool bIsTaskItem = false;
+	TCHAR TaskMark = ' ';
+
+	TSharedPtr<FMarkdownTableModel> TableModel;
 };

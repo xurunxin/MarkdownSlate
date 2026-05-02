@@ -4,6 +4,7 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Slate/MarkdownSlateRenderer.h"
+#include "Cache/MarkdownRenderCache.h"
 
 DECLARE_DELEGATE_OneParam(FOnMarkdownViewLinkClickedSlate, const FString& /*Url*/);
 
@@ -22,10 +23,12 @@ public:
 	void SetMarkdownText(const FString& InMarkdownText);
 	void SetThemeConfig(const FMarkdownSlateThemeConfig& InTheme);
 	void RefreshDisplay();
+	void InvalidateCache();
 
 private:
 	TAttribute<FString> MarkdownText;
 	TSharedPtr<SVerticalBox> ContentBox;
 	FOnMarkdownViewLinkClickedSlate OnLinkClicked;
 	FMarkdownSlateThemeConfig ThemeConfig;
+	FMarkdownRenderCache RenderCache;
 };

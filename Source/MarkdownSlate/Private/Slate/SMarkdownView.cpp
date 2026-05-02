@@ -28,7 +28,13 @@ void SMarkdownView::SetMarkdownText(const FString& InMarkdownText)
 void SMarkdownView::SetThemeConfig(const FMarkdownSlateThemeConfig& InTheme)
 {
 	ThemeConfig = InTheme;
+	RenderCache.Invalidate();
 	RefreshDisplay();
+}
+
+void SMarkdownView::InvalidateCache()
+{
+	RenderCache.Invalidate();
 }
 
 void SMarkdownView::RefreshDisplay()
@@ -47,22 +53,34 @@ void SMarkdownView::RefreshDisplay()
 		ContentBox->AddSlot()
 			.AutoHeight()
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("")))
+				SNew(STextBlock).Text(FText::FromString(TEXT("")))
 			];
 		return;
 	}
 
-	FMarkdownParser Parser;
-	TSharedPtr<FMarkdownBlockNode> AstRoot = Parser.Parse(CurrentText);
+	// Build cache key
+	FMarkdownRenderCacheKey CacheKey;
+	CacheKey.SourceHash = GetTypeHash(CurrentText);
+	CacheKey.ParseFlags = 0; // MD_DIALECT_GITHUB default
+	CacheKey.ThemeHash = ThemeConfig.ComputeHash();
+	CacheKey.WidthBucket = FMarkdownRenderCacheKey::MakeWidthBucket(ThemeConfig.WrapTextWidth);
+	CacheKey.FeatureMask = 0;
+	CacheKey.SchemaVersion = 1;
 
-	FMarkdownRenderBuilder Builder;
-	TSharedPtr<FMarkdownRenderNode> RenderRoot = Builder.Build(AstRoot);
+	// Try cache
+	TSharedPtr<FMarkdownRenderNode> CachedRoot = RenderCache.Get(CacheKey);
 
-	TSharedRef<SWidget> RenderedWidget = FMarkdownSlateRenderer::Render(RenderRoot, ThemeConfig);
+	if (!CachedRoot.IsValid())
+	{
+		FMarkdownParser Parser;
+		TSharedPtr<FMarkdownBlockNode> AstRoot = Parser.Parse(CurrentText);
+		FMarkdownRenderBuilder Builder;
+		CachedRoot = Builder.Build(AstRoot);
+		RenderCache.Put(CacheKey, CachedRoot);
+	}
 
 	ContentBox->AddSlot()
 		[
-			RenderedWidget
+			FMarkdownSlateRenderer::Render(CachedRoot, ThemeConfig)
 		];
 }
