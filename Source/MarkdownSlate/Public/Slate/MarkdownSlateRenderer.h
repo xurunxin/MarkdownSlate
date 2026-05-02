@@ -8,13 +8,13 @@
 struct FMarkdownSlateThemeConfig
 {
 	FSlateFontInfo DefaultFont;
+	FSlateFontInfo BoldFont;
+	FSlateFontInfo ItalicFont;
 
 	int32 BodyFontSize = 12;
 
 	FLinearColor HeadingColor = FLinearColor::White;
 	FLinearColor BodyTextColor = FLinearColor(0.9f, 0.9f, 0.9f);
-	FLinearColor StrongColor = FLinearColor::White;
-	FLinearColor EmphasisColor = FLinearColor(0.9f, 0.9f, 0.9f);
 	FLinearColor CodeBackgroundColor = FLinearColor(0.1f, 0.1f, 0.12f);
 	FLinearColor CodeTextColor = FLinearColor(0.95f, 0.75f, 0.35f);
 	FLinearColor LinkColor = FLinearColor(0.3f, 0.6f, 1.0f);

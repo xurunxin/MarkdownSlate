@@ -6,12 +6,23 @@
 #include "Emoji/MarkdownEmojiTypes.h"
 #include "MarkdownThemeAsset.generated.h"
 
+DECLARE_MULTICAST_DELEGATE(FOnMarkdownThemeChanged);
+
 UCLASS(BlueprintType)
 class MARKDOWNSLATE_API UMarkdownThemeAsset : public UDataAsset
 {
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
+	FSlateFontInfo DefaultFont;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
+	FSlateFontInfo BoldFont;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
+	FSlateFontInfo ItalicFont;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
 	int32 BodyFontSize = 12;
 
@@ -20,12 +31,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body")
 	FLinearColor BodyTextColor = FLinearColor(0.9f, 0.9f, 0.9f);
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body")
-	FLinearColor StrongColor = FLinearColor::White;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body")
-	FLinearColor EmphasisColor = FLinearColor(0.9f, 0.9f, 0.9f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Code")
 	FLinearColor CodeBackgroundColor = FLinearColor(0.1f, 0.1f, 0.12f);
@@ -117,9 +122,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emoji")
 	float EmojiSizeScale = 1.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emoji")
+	FString TwemojiAssetRoot = TEXT("Content/Emoji");
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emoji")
+	bool bAllowTwemojiFallback = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layout")
 	float ParagraphSpacing = 4.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layout")
 	float WrapTextWidth = 600.0f;
+
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
+	// Incremented on every property edit; widgets compare to detect changes
+	int32 Generation = 0;
 };

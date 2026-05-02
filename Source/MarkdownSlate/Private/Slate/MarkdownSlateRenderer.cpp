@@ -74,40 +74,43 @@ struct FInlineRenderStyle
 	FLinearColor Color = FLinearColor::White;
 	bool bBold = false;
 	bool bItalic = false;
+	bool bFauxBold = false; // only for Strong inline; headings use native font weight
+	FSlateFontInfo BoldFontOverride;
+	FSlateFontInfo ItalicFontOverride;
 };
 
 static FSlateFontInfo BuildStyledFont(const FInlineRenderStyle& Style)
 {
-	FSlateFontInfo Font = Style.Font;
-	Font.Size = Style.FontSize;
-	FName TypefaceName = NAME_None;
-	if (Style.bBold && Style.bItalic)
+	// Use explicit BoldFont/ItalicFont if provided
+	auto FontHasData = [](const FSlateFontInfo& F) {
+		return F.FontObject != nullptr ||
+			(F.CompositeFont.IsValid() && F.CompositeFont->DefaultTypeface.Fonts.Num() > 0);
+	};
+	if (Style.bBold && FontHasData(Style.BoldFontOverride))
 	{
-		TypefaceName = TEXT("BoldItalic");
+		FSlateFontInfo Font = Style.BoldFontOverride;
+		Font.Size = Style.FontSize;
+		return Font;
 	}
-	else if (Style.bBold)
+	if (Style.bItalic && FontHasData(Style.ItalicFontOverride))
 	{
-		TypefaceName = TEXT("Bold");
-	}
-	else if (Style.bItalic)
-	{
-		TypefaceName = TEXT("Italic");
+		FSlateFontInfo Font = Style.ItalicFontOverride;
+		Font.Size = Style.FontSize;
+		return Font;
 	}
 
-	if (!TypefaceName.IsNone())
+	FSlateFontInfo Font = Style.Font;
+	Font.Size = Style.FontSize;
+
+	if (Style.bFauxBold && Font.OutlineSettings.OutlineSize <= 0.0f)
 	{
-		if (Style.bBold && Font.FontObject == nullptr && !Font.CompositeFont.IsValid())
-		{
-			Font = FCoreStyle::GetDefaultFontStyle(TypefaceName, Style.FontSize);
-		}
-		else if (Style.bBold)
-		{
-			Font.TypefaceFontName = TypefaceName;
-		}
+		Font.OutlineSettings.OutlineSize = 0.35f;
+		Font.OutlineSettings.OutlineColor = Style.Color;
+		Font.OutlineSettings.bSeparateFillAlpha = true;
 	}
 	if (Style.bItalic)
 	{
-		Font.SkewAmount = Font.SkewAmount != 0.0f ? Font.SkewAmount : 0.25f;
+		Font.SkewAmount = 0.28f;
 	}
 	return Font;
 }
@@ -238,7 +241,9 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 	{
 		FInlineRenderStyle StrongStyle = Style;
 		StrongStyle.bBold = true;
-		StrongStyle.Color = Theme.StrongColor;
+		StrongStyle.bFauxBold = true;
+		StrongStyle.BoldFontOverride = Theme.BoldFont;
+		StrongStyle.Color = Style.Color; // inherit parent color
 		return RenderInlineChildren(Node, Theme, StrongStyle);
 	}
 
@@ -246,7 +251,8 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 	{
 		FInlineRenderStyle EmphasisStyle = Style;
 		EmphasisStyle.bItalic = true;
-		EmphasisStyle.Color = Theme.EmphasisColor;
+		EmphasisStyle.ItalicFontOverride = Theme.ItalicFont;
+		EmphasisStyle.Color = Style.Color; // inherit parent color
 		return RenderInlineChildren(Node, Theme, EmphasisStyle);
 	}
 
