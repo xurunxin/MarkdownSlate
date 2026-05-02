@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Emoji/MarkdownEmojiTypes.h"
+#include "Styling/SlateBrush.h"
 
 class FMarkdownEmojiAtlas;
 

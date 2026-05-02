@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Emoji/MarkdownEmojiTypes.h"
+#include "Styling/SlateBrush.h"
+#include "Engine/Texture2D.h"
 
 struct MARKDOWNSLATE_API FEmojiAtlasEntry
 {

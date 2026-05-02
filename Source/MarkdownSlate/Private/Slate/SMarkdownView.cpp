@@ -1,4 +1,5 @@
 #include "Slate/SMarkdownView.h"
+#include "Emoji/MarkdownEmojiAtlas.h"
 #include "Render/MarkdownRenderBuilder.h"
 #include "Parser/MarkdownParser.h"
 #include "Widgets/Layout/SBox.h"
