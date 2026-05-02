@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+Content/** filter=lfs diff=lfs merge=lfs -text
+DCC_Content/** filter=lfs diff=lfs merge=lfs -text

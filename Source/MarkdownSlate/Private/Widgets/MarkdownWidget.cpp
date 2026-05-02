@@ -1,0 +1,139 @@
+#include "Widgets/MarkdownWidget.h"
+#include "Delegates/Delegate.h"
+#include "Styling/CoreStyle.h"
+
+UMarkdownWidget::UMarkdownWidget(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	DefaultFont     = FCoreStyle::GetDefaultFontStyle("Regular", BodyFontSize);
+	BoldFont        = FCoreStyle::GetDefaultFontStyle("Bold", BodyFontSize);
+	ItalicFont      = FCoreStyle::GetDefaultFontStyle("Italic", BodyFontSize);
+	BoldItalicFont  = FCoreStyle::GetDefaultFontStyle("BoldItalic", BodyFontSize);
+	MonospaceFont   = FCoreStyle::GetDefaultFontStyle("Mono", CodeFontSize);
+}
+
+static void CopyBaseTheme(FMarkdownSlateThemeConfig& C, const UMarkdownThemeAsset& T)
+{
+	C.DefaultFont     = T.DefaultFont;
+	C.BoldFont        = T.BoldFont;
+	C.ItalicFont      = T.ItalicFont;
+	C.BoldItalicFont  = T.BoldItalicFont;
+	C.MonospaceFont   = T.MonospaceFont;
+	C.H1FontSize = T.H1FontSize; C.H2FontSize = T.H2FontSize;
+	C.H3FontSize = T.H3FontSize; C.H4FontSize = T.H4FontSize;
+	C.H5FontSize = T.H5FontSize; C.H6FontSize = T.H6FontSize;
+	C.BodyFontSize = T.BodyFontSize; C.CodeFontSize = T.CodeFontSize;
+	C.HeadingColor = T.HeadingColor; C.BodyTextColor = T.BodyTextColor;
+	C.StrongColor = T.StrongColor; C.EmphasisColor = T.EmphasisColor;
+	C.CodeBackgroundColor = T.CodeBackgroundColor; C.CodeTextColor = T.CodeTextColor;
+	C.LinkColor = T.LinkColor; C.BackgroundColor = T.BackgroundColor;
+	C.BlockquoteBackgroundColor = T.BlockquoteBackgroundColor;
+	C.ParagraphSpacing = T.ParagraphSpacing; C.WrapTextWidth = T.WrapTextWidth;
+	C.CodeCornerRadius = T.CodeCornerRadius;
+	C.CodePaddingH = T.CodePaddingH; C.CodePaddingV = T.CodePaddingV;
+	C.CodeBlockCornerRadius = T.CodeBlockCornerRadius;
+	C.CodeBlockPaddingH = T.CodeBlockPaddingH; C.CodeBlockPaddingV = T.CodeBlockPaddingV;
+	C.BlockquoteCornerRadius = T.BlockquoteCornerRadius;
+	C.BlockquoteBorderWidth = T.BlockquoteBorderWidth;
+	C.BlockquoteBorderColor = T.BlockquoteBorderColor;
+	C.BlockquotePaddingH = T.BlockquotePaddingH; C.BlockquotePaddingV = T.BlockquotePaddingV;
+	C.HorizontalRuleThickness = T.HorizontalRuleThickness;
+	C.HorizontalRuleColor = T.HorizontalRuleColor;
+}
+
+FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
+{
+	FMarkdownSlateThemeConfig Config;
+	if (ThemePreset)
+	{
+		CopyBaseTheme(Config, *ThemePreset);
+	}
+	else
+	{
+		Config.DefaultFont     = DefaultFont;
+		Config.BoldFont        = BoldFont;
+		Config.ItalicFont      = ItalicFont;
+		Config.BoldItalicFont  = BoldItalicFont;
+		Config.MonospaceFont   = MonospaceFont;
+		Config.H1FontSize = H1FontSize; Config.H2FontSize = H2FontSize;
+		Config.H3FontSize = H3FontSize; Config.H4FontSize = H4FontSize;
+		Config.H5FontSize = H5FontSize; Config.H6FontSize = H6FontSize;
+		Config.BodyFontSize = BodyFontSize; Config.CodeFontSize = CodeFontSize;
+		Config.HeadingColor = HeadingColor; Config.BodyTextColor = BodyTextColor;
+		Config.StrongColor = StrongColor; Config.EmphasisColor = EmphasisColor;
+		Config.CodeBackgroundColor = CodeBackgroundColor; Config.CodeTextColor = CodeTextColor;
+		Config.LinkColor = LinkColor; Config.BackgroundColor = BackgroundColor;
+		Config.BlockquoteBackgroundColor = BlockquoteBackgroundColor;
+		Config.ParagraphSpacing = ParagraphSpacing; Config.WrapTextWidth = WrapTextWidth;
+		Config.CodeCornerRadius = CodeCornerRadius;
+		Config.CodePaddingH = CodePaddingH; Config.CodePaddingV = CodePaddingV;
+		Config.CodeBlockCornerRadius = CodeBlockCornerRadius;
+		Config.CodeBlockPaddingH = CodeBlockPaddingH; Config.CodeBlockPaddingV = CodeBlockPaddingV;
+		Config.BlockquoteCornerRadius = BlockquoteCornerRadius;
+		Config.BlockquoteBorderWidth = BlockquoteBorderWidth;
+		Config.BlockquoteBorderColor = BlockquoteBorderColor;
+		Config.BlockquotePaddingH = BlockquotePaddingH; Config.BlockquotePaddingV = BlockquotePaddingV;
+		Config.HorizontalRuleThickness = HorizontalRuleThickness;
+		Config.HorizontalRuleColor = HorizontalRuleColor;
+	}
+	return Config;
+}
+
+TSharedRef<SWidget> UMarkdownWidget::RebuildWidget()
+{
+	auto Config = BuildThemeConfig();
+	Config.OnLinkClicked = [this](const FString& Url) { OnNativeLinkClicked(Url); };
+
+	MySlateWidget = SNew(SMarkdownView)
+		.MarkdownText(MarkdownText)
+		.OnLinkClicked(FOnMarkdownViewLinkClickedSlate::CreateUObject(this, &UMarkdownWidget::OnNativeLinkClicked));
+	MySlateWidget->SetThemeConfig(Config);
+	return MySlateWidget.ToSharedRef();
+}
+
+void UMarkdownWidget::SynchronizeProperties()
+{
+	Super::SynchronizeProperties();
+	if (MySlateWidget.IsValid())
+	{
+		auto Config = BuildThemeConfig();
+		Config.OnLinkClicked = [this](const FString& Url) { OnNativeLinkClicked(Url); };
+		MySlateWidget->SetThemeConfig(Config);
+		MySlateWidget->SetMarkdownText(MarkdownText);
+	}
+}
+
+void UMarkdownWidget::ReleaseSlateResources(bool bReleaseChildren)
+{
+	Super::ReleaseSlateResources(bReleaseChildren);
+	MySlateWidget.Reset();
+}
+
+void UMarkdownWidget::SetMarkdownText(const FString& InText)
+{
+	MarkdownText = InText;
+	if (MySlateWidget.IsValid()) MySlateWidget->SetMarkdownText(InText);
+}
+
+void UMarkdownWidget::RefreshDisplayMarkdown()
+{
+	if (MySlateWidget.IsValid())
+	{
+		auto Config = BuildThemeConfig();
+		Config.OnLinkClicked = [this](const FString& Url) { OnNativeLinkClicked(Url); };
+		MySlateWidget->SetThemeConfig(Config);
+		MySlateWidget->RefreshDisplay();
+	}
+}
+
+void UMarkdownWidget::OnNativeLinkClicked(const FString& Url)
+{
+	OnLinkClicked.Broadcast(Url);
+}
+
+#if WITH_EDITOR
+const FText UMarkdownWidget::GetPaletteCategory()
+{
+	return NSLOCTEXT("MarkdownSlate", "PaletteCategory", "Markdown");
+}
+#endif
