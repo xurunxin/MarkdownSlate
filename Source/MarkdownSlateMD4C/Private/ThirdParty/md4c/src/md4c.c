@@ -23,6 +23,15 @@
  * IN THE SOFTWARE.
  */
 
+/* The third-party MD4C source uses MD_UNREACHABLE() which expands to
+ * __assume(0) on MSVC. The fallback `return FALSE;` after switches
+ * containing MD_UNREACHABLE() is then flagged as unreachable code (C4702)
+ * under UE 5.8's strict warning defaults. Disable C4702 for this file
+ * only; the rest of the project keeps strict unreachable-code checks. */
+#if defined(_MSC_VER)
+#  pragma warning(disable: 4702)  /* unreachable code */
+#endif
+
 #include "md4c.h"
 
 #include <limits.h>
