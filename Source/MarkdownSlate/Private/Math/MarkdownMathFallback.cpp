@@ -14,7 +14,7 @@ TSharedRef<SWidget> FMarkdownMathFallback::RenderDisplayMath(const FString& Late
 {
 	return SNew(SBorder)
 		.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(0.08, 0.08, 0.1))
+		.BorderBackgroundColor(FLinearColor(0.08f, 0.08f, 0.1f))
 		.Padding(FMargin(8, 4))
 		[
 			SNew(STextBlock)
