@@ -3,6 +3,7 @@
 #include "Engine/Texture2D.h"
 #include "Styling/SlateBrush.h"
 #include "UObject/UObjectGlobals.h"
+#include "Engine/Texture.h"
 
 FMarkdownEmojiAtlas::FMarkdownEmojiAtlas()
 {
@@ -39,6 +40,11 @@ void FMarkdownEmojiAtlas::SetAtlasTexture(int32 Page, UTexture2D* InTexture)
 		AtlasTextures.SetNum(Page + 1);
 	}
 	BrushCache.Empty();
+	if (InTexture)
+	{
+		InTexture->LODGroup = TEXTUREGROUP_UI;
+		InTexture->Filter = TF_Bilinear;
+	}
 	AtlasTextures[Page] = InTexture;
 }
 
@@ -138,11 +144,12 @@ bool FMarkdownEmojiAtlas::GetUVRect(const FString& TwemojiCode, FVector2D& OutUV
 	int32 Col, Row;
 	if (!GetGridCoords(TwemojiCode, Col, Row)) return false;
 
-	float CellU = (float)CellSize / (float)AtlasSize;
-	OutUVMin.X = (float)Col * CellU;
-	OutUVMin.Y = (float)Row * CellU;
-	OutUVMax.X = OutUVMin.X + CellU;
-	OutUVMax.Y = OutUVMin.Y + CellU;
+	const float CellU = (float)CellSize / (float)AtlasSize;
+	const float HalfTexel = 0.5f / (float)AtlasSize;
+	OutUVMin.X = (float)Col * CellU + HalfTexel;
+	OutUVMin.Y = (float)Row * CellU + HalfTexel;
+	OutUVMax.X = OutUVMin.X + CellU - HalfTexel * 2.0f;
+	OutUVMax.Y = OutUVMin.Y + CellU - HalfTexel * 2.0f;
 	return true;
 }
 
@@ -164,13 +171,15 @@ TSharedPtr<FSlateBrush> FMarkdownEmojiAtlas::GetEmojiBrush(const FString& Twemoj
 	}
 
 	const float CellU = (float)CellSize / (float)AtlasSize;
-	const FVector2D UVMin((float)Found->GridCol * CellU, (float)Found->GridRow * CellU);
-	const FVector2D UVMax(UVMin.X + CellU, UVMin.Y + CellU);
+	const float HalfTexel = 0.5f / (float)AtlasSize;
+	const FVector2D UVMin((float)Found->GridCol * CellU + HalfTexel, (float)Found->GridRow * CellU + HalfTexel);
+	const FVector2D UVMax(UVMin.X + CellU - HalfTexel * 2.0f, UVMin.Y + CellU - HalfTexel * 2.0f);
 
 	auto Brush = MakeShared<FSlateBrush>();
 	Brush->SetResourceObject(AtlasTextures[Found->Page]);
 	Brush->ImageSize = FVector2D(FontSize);
 	Brush->DrawAs = ESlateBrushDrawType::Image;
+	Brush->Tiling = ESlateBrushTileType::NoTile;
 	Brush->SetUVRegion(FBox2f(FVector2f(UVMin), FVector2f(UVMax)));
 
 	BrushCache.Add(CacheKey, Brush);

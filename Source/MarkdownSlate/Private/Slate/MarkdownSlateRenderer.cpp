@@ -14,6 +14,7 @@
 #include "Emoji/MarkdownEmojiScanner.h"
 #include "Emoji/SMarkdownEmojiRun.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "UObject/UObjectGlobals.h"
 
 // Cached rounded brushes — updated when theme changes, shared across all widgets
 struct FRoundedBrushCache
@@ -46,7 +47,28 @@ FMarkdownSlateThemeConfig FMarkdownSlateThemeConfig::Default()
 {
 	FMarkdownSlateThemeConfig Config;
 	Config.DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", Config.BodyFontSize);
+	Config.EmojiFont = MakeDefaultEmojiFont(Config.BodyFontSize);
 	return Config;
+}
+
+FSlateFontInfo FMarkdownSlateThemeConfig::MakeDefaultEmojiFont(int32 Size)
+{
+	UObject* EmojiFontObject = StaticLoadObject(
+		UObject::StaticClass(),
+		nullptr,
+		TEXT("/MarkdownSlate/Fonts/NotoColorEmoji-Regular_Font.NotoColorEmoji-Regular_Font"));
+	if (!EmojiFontObject)
+	{
+		EmojiFontObject = StaticLoadObject(
+			UObject::StaticClass(),
+			nullptr,
+			TEXT("/MarkdownSlate/Fonts/NotoColorEmoji-Regular.NotoColorEmoji-Regular"));
+	}
+
+	FSlateFontInfo Font;
+	Font.FontObject = EmojiFontObject;
+	Font.Size = Size;
+	return Font;
 }
 
 uint32 FMarkdownSlateThemeConfig::ComputeHash() const
@@ -55,6 +77,7 @@ uint32 FMarkdownSlateThemeConfig::ComputeHash() const
 	Hash = HashCombine(Hash, GetTypeHash(BodyFontSize));
 	Hash = HashCombine(Hash, GetTypeHash(WrapTextWidth));
 	Hash = HashCombine(Hash, GetTypeHash(ParagraphSpacing));
+	Hash = HashCombine(Hash, GetTypeHash(EmojiFont.FontObject));
 	Hash = HashCombine(Hash, GetTypeHash(HeadingColor.R) ^ GetTypeHash(HeadingColor.G) ^ GetTypeHash(HeadingColor.B));
 	Hash = HashCombine(Hash, GetTypeHash(BodyTextColor.R) ^ GetTypeHash(BodyTextColor.G) ^ GetTypeHash(BodyTextColor.B));
 	Hash = HashCombine(Hash, GetTypeHash(LinkColor.R) ^ GetTypeHash(LinkColor.G) ^ GetTypeHash(LinkColor.B));
@@ -196,25 +219,18 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
 			for (const auto& Run : Runs)
 			{
-				const bool bUsePlatformFont =
-					Run.bIsEmoji &&
-					Theme.EmojiRenderMode == EMarkdownEmojiRenderMode::PlatformFontFirst;
 				RunBox->AddSlot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
 				[
-					bUsePlatformFont
-						? static_cast<TSharedRef<SWidget>>(SNew(STextBlock)
-							.Text(FText::FromString(Run.EmojiSequence))
-							.Font(BuildStyledFont(Style))
-							.ColorAndOpacity(FSlateColor(Style.Color)))
-						: static_cast<TSharedRef<SWidget>>(SNew(SMarkdownEmojiRun)
-							.Run(Run)
-							.FontInfo(BuildStyledFont(Style))
-							.FontSize(Style.FontSize)
-							.TextColor(Style.Color)
-							.EmojiProvider(Theme.EmojiProvider)
-							.Config(EmojiCfg))
+					SNew(SMarkdownEmojiRun)
+						.Run(Run)
+						.FontInfo(BuildStyledFont(Style))
+						.EmojiFontInfo(Theme.EmojiFont)
+						.FontSize(Style.FontSize)
+						.TextColor(Style.Color)
+						.EmojiProvider(Theme.EmojiProvider)
+						.Config(EmojiCfg)
 				];
 			}
 			return RunBox;

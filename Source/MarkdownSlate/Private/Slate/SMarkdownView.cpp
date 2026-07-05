@@ -6,6 +6,147 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 
+namespace
+{
+bool IsEscapedMarkdownChar(const FString& Text, int32 Index)
+{
+	int32 SlashCount = 0;
+	for (int32 i = Index - 1; i >= 0 && Text[i] == TEXT('\\'); --i)
+	{
+		++SlashCount;
+	}
+	return (SlashCount % 2) != 0;
+}
+
+int32 CountUnescapedToken(const FString& Text, const TCHAR* Token)
+{
+	const FString TokenText(Token);
+	int32 Count = 0;
+	for (int32 Index = 0; Index != INDEX_NONE && Index < Text.Len();)
+	{
+		Index = Text.Find(TokenText, ESearchCase::CaseSensitive, ESearchDir::FromStart, Index);
+		if (Index == INDEX_NONE)
+		{
+			break;
+		}
+		if (!IsEscapedMarkdownChar(Text, Index))
+		{
+			++Count;
+		}
+		Index += TokenText.Len();
+	}
+	return Count;
+}
+
+bool HasUnclosedLinkOrImage(const FString& Text)
+{
+	int32 OpenBracketCount = 0;
+	bool bInLinkDestination = false;
+
+	for (int32 Index = 0; Index < Text.Len(); ++Index)
+	{
+		const TCHAR Ch = Text[Index];
+		if (IsEscapedMarkdownChar(Text, Index))
+		{
+			continue;
+		}
+
+		if (bInLinkDestination)
+		{
+			if (Ch == TEXT(')'))
+			{
+				bInLinkDestination = false;
+			}
+			continue;
+		}
+
+		if (Ch == TEXT('['))
+		{
+			++OpenBracketCount;
+		}
+		else if (Ch == TEXT(']') && OpenBracketCount > 0)
+		{
+			--OpenBracketCount;
+			if (Index + 1 < Text.Len() && Text[Index + 1] == TEXT('('))
+			{
+				bInLinkDestination = true;
+				++Index;
+			}
+		}
+	}
+
+	return OpenBracketCount > 0 || bInLinkDestination;
+}
+
+bool IsMarkdownListLine(const FString& Line)
+{
+	int32 Index = 0;
+	while (Index < Line.Len() && FChar::IsWhitespace(Line[Index]))
+	{
+		++Index;
+	}
+
+	if (Index + 1 < Line.Len() &&
+		(Line[Index] == TEXT('-') || Line[Index] == TEXT('+') || Line[Index] == TEXT('*')) &&
+		FChar::IsWhitespace(Line[Index + 1]))
+	{
+		return true;
+	}
+
+	int32 DigitIndex = Index;
+	while (DigitIndex < Line.Len() && FChar::IsDigit(Line[DigitIndex]))
+	{
+		++DigitIndex;
+	}
+
+	return DigitIndex > Index &&
+		DigitIndex + 1 < Line.Len() &&
+		(Line[DigitIndex] == TEXT('.') || Line[DigitIndex] == TEXT(')')) &&
+		FChar::IsWhitespace(Line[DigitIndex + 1]);
+}
+
+bool ContainsMarkdownListLine(const FString& Text)
+{
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines, false);
+	for (const FString& Line : Lines)
+	{
+		if (IsMarkdownListLine(Line))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+}
+
+bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& PendingText)
+{
+	if (PendingText.IsEmpty())
+	{
+		return false;
+	}
+
+	if (!PendingText.Contains(TEXT("\n")))
+	{
+		return true;
+	}
+
+	if (ContainsMarkdownListLine(PendingText))
+	{
+		return true;
+	}
+
+	if ((CountUnescapedToken(PendingText, TEXT("`")) % 2) != 0 ||
+		(CountUnescapedToken(PendingText, TEXT("**")) % 2) != 0 ||
+		(CountUnescapedToken(PendingText, TEXT("__")) % 2) != 0)
+	{
+		return true;
+	}
+
+	return HasUnclosedLinkOrImage(PendingText);
+}
+
 void SMarkdownView::Construct(const FArguments& InArgs)
 {
 	MarkdownText = InArgs._MarkdownText;
@@ -205,7 +346,8 @@ void SMarkdownView::AppendStableStreamingText(const FString& StableText)
 
 	if (PendingContentBox.IsValid())
 	{
-		PendingContentBox->SetContent(SNullWidget::NullWidget);
+		StreamingContentBox->RemoveSlot(PendingContentBox.ToSharedRef());
+		PendingContentBox.Reset();
 	}
 
 	const FString NewStableText = StableText.Mid(RenderedStableTextLen);
@@ -228,7 +370,8 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 	{
 		if (PendingContentBox.IsValid())
 		{
-			PendingContentBox->SetContent(SNullWidget::NullWidget);
+			StreamingContentBox->RemoveSlot(PendingContentBox.ToSharedRef());
+			PendingContentBox.Reset();
 		}
 		return;
 	}
@@ -241,6 +384,21 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 			[
 				SAssignNew(PendingContentBox, SBox)
 			];
+	}
+
+	if (MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(PendingText))
+	{
+		FSlateFontInfo Font = ThemeConfig.DefaultFont;
+		Font.Size = ThemeConfig.BodyFontSize;
+		PendingContentBox->SetContent(
+			SNew(STextBlock)
+			.Text(FText::FromString(PendingText))
+			.Font(Font)
+			.ColorAndOpacity(FSlateColor(ThemeConfig.BodyTextColor))
+			.AutoWrapText(true)
+			.WrapTextAt(ThemeConfig.WrapTextWidth)
+		);
+		return;
 	}
 
 	TSharedRef<SVerticalBox> PendingVBox = SNew(SVerticalBox);

@@ -24,6 +24,9 @@ public:
 	FSlateFontInfo ItalicFont;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
+	FSlateFontInfo EmojiFont;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Font")
 	int32 BodyFontSize = 12;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heading")
@@ -117,7 +120,7 @@ public:
 	bool bEnableEmojiRendering = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emoji")
-	EMarkdownEmojiRenderMode EmojiRenderMode = EMarkdownEmojiRenderMode::PlatformFontFirst;
+	EMarkdownEmojiRenderMode EmojiRenderMode = EMarkdownEmojiRenderMode::TwemojiFirst;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emoji")
 	float EmojiSizeScale = 1.0f;

@@ -20,6 +20,7 @@ static void CopyThemeToConfig(FMarkdownSlateThemeConfig& C, const UMarkdownTheme
 	C.DefaultFont = T.DefaultFont;
 	C.BoldFont = T.BoldFont;
 	C.ItalicFont = T.ItalicFont;
+	C.EmojiFont = T.EmojiFont;
 	C.BodyFontSize = T.BodyFontSize;
 
 	C.HeadingColor = T.HeadingColor;
@@ -80,6 +81,9 @@ FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 	if (IsFontEmpty(Config.DefaultFont))
 		Config.DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", Config.BodyFontSize);
 	Config.DefaultFont.Size = Config.BodyFontSize;
+	if (IsFontEmpty(Config.EmojiFont))
+		Config.EmojiFont = FMarkdownSlateThemeConfig::MakeDefaultEmojiFont(Config.BodyFontSize);
+	Config.EmojiFont.Size = Config.BodyFontSize;
 
 	return Config;
 }

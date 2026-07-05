@@ -12,6 +12,11 @@ DECLARE_DELEGATE_OneParam(FOnMarkdownViewLinkClickedSlate, const FString& /*Url*
 
 class SBox;
 
+namespace MarkdownSlate
+{
+	MARKDOWNSLATE_API bool ShouldRenderPendingStreamingTextAsPlainText(const FString& PendingText);
+}
+
 class MARKDOWNSLATE_API SMarkdownView : public SCompoundWidget
 {
 public:

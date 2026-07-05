@@ -12,6 +12,7 @@ struct FMarkdownSlateThemeConfig
 	FSlateFontInfo DefaultFont;
 	FSlateFontInfo BoldFont;
 	FSlateFontInfo ItalicFont;
+	FSlateFontInfo EmojiFont;
 
 	int32 BodyFontSize = 12;
 
@@ -55,7 +56,7 @@ struct FMarkdownSlateThemeConfig
 	float TableBorderThickness = 1.0f;
 
 	bool bEnableEmojiRendering = true;
-	EMarkdownEmojiRenderMode EmojiRenderMode = EMarkdownEmojiRenderMode::PlatformFontFirst;
+	EMarkdownEmojiRenderMode EmojiRenderMode = EMarkdownEmojiRenderMode::TwemojiFirst;
 	FString TwemojiAssetRoot = TEXT("Content/Emoji");
 	float EmojiSizeScale = 1.0f;
 	bool bAllowTwemojiFallback = true;
@@ -65,6 +66,7 @@ struct FMarkdownSlateThemeConfig
 
 	uint32 ComputeHash() const;
 	static FMarkdownSlateThemeConfig Default();
+	static FSlateFontInfo MakeDefaultEmojiFont(int32 Size);
 };
 
 class MARKDOWNSLATE_API FMarkdownSlateRenderer

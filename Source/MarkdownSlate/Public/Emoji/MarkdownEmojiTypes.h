@@ -21,7 +21,7 @@ struct MARKDOWNSLATE_API FMarkdownEmojiRun
 struct MARKDOWNSLATE_API FMarkdownEmojiConfig
 {
 	bool bEnableEmojiRendering = true;
-	EMarkdownEmojiRenderMode RenderMode = EMarkdownEmojiRenderMode::PlatformFontFirst;
+	EMarkdownEmojiRenderMode RenderMode = EMarkdownEmojiRenderMode::TwemojiFirst;
 	FString TwemojiAssetRoot = TEXT("Content/Emoji");
 	float EmojiSizeScale = 1.0f;
 	float EmojiBaselineOffset = 0.0f;

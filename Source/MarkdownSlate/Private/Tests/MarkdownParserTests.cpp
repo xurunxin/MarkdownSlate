@@ -1,11 +1,100 @@
 #include "Misc/AutomationTest.h"
+#include "Emoji/MarkdownEmojiAssetProvider.h"
+#include "Emoji/MarkdownEmojiAtlas.h"
 #include "Emoji/MarkdownEmojiScanner.h"
+#include "Emoji/SMarkdownEmojiRun.h"
 #include "Parser/MarkdownParser.h"
 #include "Render/MarkdownRenderBuilder.h"
+#include "Slate/MarkdownSlateRenderer.h"
+#include "Slate/SMarkdownView.h"
 #include "Streaming/MarkdownStreamingBuffer.h"
+#include "Widgets/MarkdownStreamingPerfTestWidget.h"
 #include "Widgets/MarkdownWidget.h"
+#include "Blueprint/UserWidget.h"
+#include "Engine/Engine.h"
+#include "Tests/AutomationCommon.h"
 
 #if WITH_AUTOMATION_TESTS
+
+static UWorld* FindAutomationWorld()
+{
+	if (!GEngine)
+	{
+		return nullptr;
+	}
+
+	for (const FWorldContext& Context : GEngine->GetWorldContexts())
+	{
+		if (Context.World())
+		{
+			return Context.World();
+		}
+	}
+
+	return nullptr;
+}
+
+static UMarkdownStreamingPerfTestWidget* CreateMarkdownPerfTestWidget()
+{
+	UClass* WidgetClass = LoadClass<UMarkdownStreamingPerfTestWidget>(nullptr, TEXT("/Game/MarkdownSlate/Tests/WBP_MarkdownStreamingPerf_MCP.WBP_MarkdownStreamingPerf_MCP_C"));
+	UWorld* World = FindAutomationWorld();
+	if (!WidgetClass || !World)
+	{
+		return nullptr;
+	}
+
+	return CreateWidget<UMarkdownStreamingPerfTestWidget>(World, WidgetClass);
+}
+
+class FWaitForMarkdownDelayedStreamingCommand final : public IAutomationLatentCommand
+{
+public:
+	FWaitForMarkdownDelayedStreamingCommand(FAutomationTestBase* InTest, UMarkdownStreamingPerfTestWidget* InWidget, int32 InExpectedChars, double InStartedAt)
+		: Test(InTest)
+		, Widget(InWidget)
+		, ExpectedChars(InExpectedChars)
+		, StartedAt(InStartedAt)
+	{
+	}
+
+	virtual bool Update() override
+	{
+		if (!Test)
+		{
+			return true;
+		}
+
+		if (!Widget.IsValid())
+		{
+			Test->AddError(TEXT("Delayed streaming widget became invalid"));
+			return true;
+		}
+
+		if (!Widget->IsDelayedTokenStreamingActive())
+		{
+			const FMarkdownStreamingPerfResult Result = Widget->GetLastDelayedStreamingResult();
+			Test->TestTrue(TEXT("Delayed token streaming completed successfully"), Result.bSuccess);
+			Test->TestEqual(TEXT("Delayed token streaming produced expected character count"), Result.TotalChars, ExpectedChars);
+			Test->TestTrue(TEXT("Delayed token streaming elapsed across timer ticks"), Result.ElapsedMs >= 20.0);
+			return true;
+		}
+
+		if ((FPlatformTime::Seconds() - StartedAt) > 5.0)
+		{
+			Test->AddError(TEXT("Timed out waiting for delayed token streaming"));
+			Widget->StopDelayedTokenStreamingTest();
+			return true;
+		}
+
+		return false;
+	}
+
+private:
+	FAutomationTestBase* Test = nullptr;
+	TWeakObjectPtr<UMarkdownStreamingPerfTestWidget> Widget;
+	int32 ExpectedChars = 0;
+	double StartedAt = 0.0;
+};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingBufferStableBoundaryTest, "MarkdownSlate.StreamingBuffer.StableBoundary", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownStreamingBufferStableBoundaryTest::RunTest(const FString& Parameters)
@@ -17,13 +106,38 @@ bool FMarkdownStreamingBufferStableBoundaryTest::RunTest(const FString& Paramete
 	TestEqual(TEXT("Pending holds incomplete line"), Buffer.GetPendingText(), FString(TEXT("First line")));
 
 	Buffer.Append(TEXT("\nSecond"));
-	TestEqual(TEXT("Newline commits stable text"), Buffer.GetStableText(), FString(TEXT("First line\n")));
-	TestEqual(TEXT("Pending holds suffix"), Buffer.GetPendingText(), FString(TEXT("Second")));
+	TestEqual(TEXT("Single newline keeps current block pending"), Buffer.GetStableText(), FString());
+	TestEqual(TEXT("Pending holds current block"), Buffer.GetPendingText(), FString(TEXT("First line\nSecond")));
+
+	Buffer.Append(TEXT("\n\nThird"));
+	TestEqual(TEXT("Blank line commits stable block"), Buffer.GetStableText(), FString(TEXT("First line\nSecond\n\n")));
+	TestEqual(TEXT("Pending holds suffix after blank line"), Buffer.GetPendingText(), FString(TEXT("Third")));
 
 	Buffer.Reset();
 	TestEqual(TEXT("Reset clears stable text"), Buffer.GetStableText(), FString());
 	TestEqual(TEXT("Reset clears pending text"), Buffer.GetPendingText(), FString());
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingBufferTableBoundaryTest, "MarkdownSlate.StreamingBuffer.TableBoundary", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingBufferTableBoundaryTest::RunTest(const FString& Parameters)
+{
+	FMarkdownStreamingBuffer Buffer;
+
+	Buffer.Append(TEXT("| Item | Value |\n"));
+	TestEqual(TEXT("Table header remains pending"), Buffer.GetStableText(), FString());
+	TestEqual(TEXT("Pending has table header"), Buffer.GetPendingText(), FString(TEXT("| Item | Value |\n")));
+
+	Buffer.Append(TEXT("| --- | ---: |\n"));
+	TestEqual(TEXT("Table delimiter remains pending"), Buffer.GetStableText(), FString());
+
+	Buffer.Append(TEXT("| Row | 1 |\n"));
+	TestEqual(TEXT("Table row remains pending until block boundary"), Buffer.GetStableText(), FString());
+
+	Buffer.Append(TEXT("\nNext"));
+	TestEqual(TEXT("Blank line commits whole table"), Buffer.GetStableText(), FString(TEXT("| Item | Value |\n| --- | ---: |\n| Row | 1 |\n\n")));
+	TestEqual(TEXT("Pending starts next block"), Buffer.GetPendingText(), FString(TEXT("Next")));
 	return true;
 }
 
@@ -39,6 +153,189 @@ bool FMarkdownWidgetStreamingApiTest::RunTest(const FString& Parameters)
 	Widget->EndStreamingMarkdown();
 
 	TestEqual(TEXT("Streaming preserves public markdown text"), Widget->MarkdownText, FString(TEXT("Hello world\n")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingPendingInlineFallbackTest, "MarkdownSlate.Streaming.PendingInlineFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingPendingInlineFallbackTest::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Unclosed strong text renders pending as plain text"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("**diagnosis")));
+	TestTrue(TEXT("Closed single-line strong text remains plain while pending"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("**diagnosis**")));
+	TestTrue(TEXT("Unclosed code span renders pending as plain text"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("`code")));
+	TestTrue(TEXT("Closed single-line code span remains plain while pending"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("`code`")));
+	TestTrue(TEXT("Unclosed link renders pending as plain text"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("[reference](https://example.com")));
+	TestTrue(TEXT("Single-line heading remains plain while pending"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("# Assessment")));
+	TestTrue(TEXT("Single-line unordered list remains plain while pending"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("- item")));
+	TestTrue(TEXT("Single-line ordered list remains plain while pending"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("1. item")));
+	TestTrue(TEXT("Multi-line unordered list remains plain until block boundary"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("- first\n- second")));
+	TestTrue(TEXT("Multi-line ordered list remains plain until block boundary"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("1. first\n2. second")));
+	TestTrue(TEXT("Task list remains plain until block boundary"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("- [ ] first\n- [x] second")));
+	TestFalse(TEXT("Table pending remains markdown-renderable"), MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(TEXT("| A | B |\n| --- | --- |\n")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetStreamingBlueprintPerfTest, "MarkdownSlate.Widget.StreamingBlueprintPerf", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownWidgetStreamingBlueprintPerfTest::RunTest(const FString& Parameters)
+{
+	UClass* WidgetClass = LoadClass<UMarkdownStreamingPerfTestWidget>(nullptr, TEXT("/Game/MarkdownSlate/Tests/WBP_MarkdownStreamingPerf_MCP.WBP_MarkdownStreamingPerf_MCP_C"));
+	TestNotNull(TEXT("MCP-created performance widget blueprint class"), WidgetClass);
+	if (!WidgetClass)
+	{
+		return false;
+	}
+
+	UWorld* World = nullptr;
+	if (GEngine)
+	{
+		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		{
+			if (Context.World())
+			{
+				World = Context.World();
+				break;
+			}
+		}
+	}
+
+	TestNotNull(TEXT("World for creating performance widget"), World);
+	if (!World)
+	{
+		return false;
+	}
+
+	UMarkdownStreamingPerfTestWidget* Widget = CreateWidget<UMarkdownStreamingPerfTestWidget>(World, WidgetClass);
+	TestNotNull(TEXT("Performance widget instance"), Widget);
+	if (!Widget)
+	{
+		return false;
+	}
+
+	const FMarkdownStreamingPerfResult Streaming = Widget->RunStreamingPerformanceTest(120, 192, true);
+	const FMarkdownStreamingPerfResult FullReset = Widget->RunStreamingPerformanceTest(120, 192, false);
+
+	TestTrue(TEXT("Streaming blueprint path succeeds"), Streaming.bSuccess);
+	TestTrue(TEXT("Full-reset comparison path succeeds"), FullReset.bSuccess);
+	TestTrue(TEXT("Streaming remains faster than full reset for chatbot-style chunks"), Streaming.ElapsedMs <= FullReset.ElapsedMs);
+
+	AddInfo(FString::Printf(TEXT("Streaming perf: chars=%d chunks=%d streaming=%.3fms avg=%.3fms full-reset=%.3fms"),
+		Streaming.TotalChars,
+		Streaming.ChunkCount,
+		Streaming.ElapsedMs,
+		Streaming.AverageChunkMs,
+		FullReset.ElapsedMs));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetDelayedTokenStreamingTest, "MarkdownSlate.Widget.DelayedTokenStreaming", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownWidgetDelayedTokenStreamingTest::RunTest(const FString& Parameters)
+{
+	UMarkdownStreamingPerfTestWidget* Widget = CreateMarkdownPerfTestWidget();
+	TestNotNull(TEXT("Performance widget instance"), Widget);
+	if (!Widget)
+	{
+		return false;
+	}
+
+	const int32 ExpectedChars = Widget->GetPerfMarkdownText(2).Len();
+	const FMarkdownStreamingPerfResult Started = Widget->StartDelayedTokenStreamingTest(2, 64, 0.01f, false);
+	TestTrue(TEXT("Delayed token streaming starts"), Started.bSuccess);
+	TestTrue(TEXT("Delayed token streaming reports active state"), Widget->IsDelayedTokenStreamingActive());
+	TestEqual(TEXT("Delayed token streaming uses requested token size"), Started.ChunkCount, FMath::DivideAndRoundUp(ExpectedChars, 64));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForMarkdownDelayedStreamingCommand(this, Widget, ExpectedChars, FPlatformTime::Seconds()));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetEmojiMixedBlueprintTest, "MarkdownSlate.Widget.EmojiMixedBlueprint", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownWidgetEmojiMixedBlueprintTest::RunTest(const FString& Parameters)
+{
+	UMarkdownStreamingPerfTestWidget* Widget = CreateMarkdownPerfTestWidget();
+	TestNotNull(TEXT("Performance widget instance"), Widget);
+	if (!Widget)
+	{
+		return false;
+	}
+
+	const FString EmojiMarkdown = Widget->GetEmojiMixedMarkdownText();
+	TestTrue(TEXT("Emoji mixed markdown includes face emoji"), EmojiMarkdown.Contains(TEXT("😀")));
+	TestTrue(TEXT("Emoji mixed markdown includes ZWJ medical worker emoji"), EmojiMarkdown.Contains(TEXT("🧑‍⚕️")));
+	TestTrue(TEXT("Emoji mixed markdown includes flag emoji"), EmojiMarkdown.Contains(TEXT("🇨🇳")));
+	TestTrue(TEXT("Emoji mixed markdown includes skin tone emoji"), EmojiMarkdown.Contains(TEXT("👍🏽")));
+
+	const FMarkdownStreamingPerfResult Result = Widget->ShowEmojiMixedTextTest(true, 24);
+	TestTrue(TEXT("Emoji mixed blueprint display succeeds"), Result.bSuccess);
+	TestEqual(TEXT("Emoji mixed blueprint display preserves text length"), Result.TotalChars, EmojiMarkdown.Len());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiDefaultFontTest, "MarkdownSlate.Emoji.DefaultFont", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiDefaultFontTest::RunTest(const FString& Parameters)
+{
+	const FMarkdownSlateThemeConfig Config = FMarkdownSlateThemeConfig::Default();
+	TestNotNull(TEXT("Default emoji font object is loaded"), Config.EmojiFont.FontObject.Get());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiDefaultAtlasFirstTest, "MarkdownSlate.Emoji.DefaultAtlasFirst", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiDefaultAtlasFirstTest::RunTest(const FString& Parameters)
+{
+	const FMarkdownSlateThemeConfig Config = FMarkdownSlateThemeConfig::Default();
+	TestEqual(TEXT("Default emoji rendering prefers atlas over platform font"), Config.EmojiRenderMode, EMarkdownEmojiRenderMode::TwemojiFirst);
+
+	FMarkdownEmojiAtlas Atlas;
+	TestTrue(TEXT("Built-in emoji atlas loads"), Atlas.AutoLoadAtlas(Config.TwemojiAssetRoot));
+	TestTrue(TEXT("Atlas has grinning face brush"), Atlas.GetEmojiBrush(TEXT("1f600"), 18.0f).IsValid());
+	TestTrue(TEXT("Atlas resolves heart variation brush"), Atlas.GetEmojiBrush(TEXT("2764-fe0f"), 18.0f).IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFallsBackToAtlasTest, "MarkdownSlate.Emoji.PlatformFontFallsBackToAtlas", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiPlatformFontFallsBackToAtlasTest::RunTest(const FString& Parameters)
+{
+	FMarkdownSlateThemeConfig ThemeConfig = FMarkdownSlateThemeConfig::Default();
+	FMarkdownAtlasEmojiProvider Provider;
+	TestTrue(TEXT("Built-in emoji provider loads atlas"), Provider.GetAtlasPtr()->AutoLoadAtlas(ThemeConfig.TwemojiAssetRoot));
+
+	FMarkdownEmojiRun Run;
+	Run.EmojiSequence = TEXT("馃榾");
+	Run.TwemojiCode = TEXT("1f600");
+	Run.bIsEmoji = true;
+
+	FMarkdownEmojiConfig Config;
+	Config.RenderMode = EMarkdownEmojiRenderMode::PlatformFontFirst;
+	Config.bAllowTwemojiFallback = true;
+	Config.EmojiSizeScale = ThemeConfig.EmojiSizeScale;
+
+	const TSharedRef<SMarkdownEmojiRun> Widget = SNew(SMarkdownEmojiRun)
+		.Run(Run)
+		.FontSize(24)
+		.FontInfo(ThemeConfig.DefaultFont)
+		.EmojiFontInfo(ThemeConfig.EmojiFont)
+		.TextColor(FLinearColor::White)
+		.EmojiProvider(&Provider)
+		.Config(Config);
+
+	const FChildren* Children = Widget->GetChildren();
+	TestEqual(TEXT("Emoji run has one child"), Children->Num(), 1);
+	if (Children->Num() > 0)
+	{
+		TestEqual(TEXT("Platform font mode uses visible atlas image when available"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("SImage")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiAtlasUVInsetTest, "MarkdownSlate.Emoji.AtlasUVInset", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiAtlasUVInsetTest::RunTest(const FString& Parameters)
+{
+	FMarkdownEmojiAtlas Atlas;
+	Atlas.SetAtlasConfig(72, 4096);
+	Atlas.AddEntry(TEXT("1f004"), 0, 0, 0);
+
+	FVector2D UVMin;
+	FVector2D UVMax;
+	TestTrue(TEXT("Known first-cell emoji has UVs"), Atlas.GetUVRect(TEXT("1f004"), UVMin, UVMax));
+	TestTrue(TEXT("UV min is inset from cell edge"), UVMin.X > 0.0f || UVMin.Y > 0.0f);
+	TestTrue(TEXT("UV max remains within atlas"), UVMax.X < 1.0f && UVMax.Y < 1.0f);
 	return true;
 }
 
