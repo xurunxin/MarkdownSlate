@@ -11,6 +11,7 @@
 DECLARE_DELEGATE_OneParam(FOnMarkdownViewLinkClickedSlate, const FString& /*Url*/);
 
 class SBox;
+class SScrollBox;
 
 namespace MarkdownSlate
 {
@@ -41,6 +42,7 @@ private:
 	TAttribute<FString> MarkdownText;
 	TSharedPtr<SVerticalBox> ContentBox;
 	TSharedPtr<SVerticalBox> StreamingContentBox;
+	TSharedPtr<SScrollBox> StreamingScrollBox;
 	TSharedPtr<SBox> PendingContentBox;
 	FOnMarkdownViewLinkClickedSlate OnLinkClicked;
 	FMarkdownSlateThemeConfig ThemeConfig;
@@ -55,4 +57,5 @@ private:
 	TSharedRef<SWidget> RenderMarkdownText(const FString& SourceText);
 	void AppendStableStreamingText(const FString& StableText);
 	void UpdatePendingStreamingText(const FString& PendingText);
+	void ScrollStreamingContentToEnd();
 };
