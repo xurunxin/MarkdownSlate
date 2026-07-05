@@ -31,6 +31,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Markdown")
 	void SetMarkdownText(const FString& InText);
 
+	UFUNCTION(BlueprintCallable, Category = "Markdown|Streaming")
+	void BeginStreamingMarkdown();
+
+	UFUNCTION(BlueprintCallable, Category = "Markdown|Streaming")
+	void AppendMarkdownChunk(const FString& Chunk);
+
+	UFUNCTION(BlueprintCallable, Category = "Markdown|Streaming")
+	void EndStreamingMarkdown();
+
 	UFUNCTION(BlueprintCallable, Category = "Markdown")
 	void RefreshDisplayMarkdown();
 

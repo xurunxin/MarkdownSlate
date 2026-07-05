@@ -5,6 +5,8 @@
 #include "Render/MarkdownRenderNode.h"
 #include "Emoji/MarkdownEmojiTypes.h"
 
+class SVerticalBox;
+
 struct FMarkdownSlateThemeConfig
 {
 	FSlateFontInfo DefaultFont;
@@ -71,4 +73,5 @@ public:
 	static TSharedRef<SWidget> Render(const TSharedPtr<FMarkdownRenderNode>& RootNode, const FMarkdownSlateThemeConfig& Theme);
 	static TSharedRef<SWidget> RenderNode(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme);
 	static TSharedRef<SWidget> RenderInlines(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme);
+	static void AppendChildren(const TSharedRef<SVerticalBox>& VBox, const TSharedPtr<FMarkdownRenderNode>& RootNode, const FMarkdownSlateThemeConfig& Theme);
 };

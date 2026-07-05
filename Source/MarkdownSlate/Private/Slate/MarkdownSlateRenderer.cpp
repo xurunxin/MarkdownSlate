@@ -614,6 +614,22 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::Render(const TSharedPtr<FMarkdownRen
 	}
 
 	TSharedRef<SVerticalBox> VBox = SNew(SVerticalBox);
+	AppendChildren(VBox, RootNode, Theme);
+
+	return SNew(SScrollBox)
+		+ SScrollBox::Slot()
+		.Padding(8)
+		[
+			VBox
+		];
+}
+
+void FMarkdownSlateRenderer::AppendChildren(const TSharedRef<SVerticalBox>& VBox, const TSharedPtr<FMarkdownRenderNode>& RootNode, const FMarkdownSlateThemeConfig& Theme)
+{
+	if (!RootNode.IsValid())
+	{
+		return;
+	}
 
 	for (const auto& Child : RootNode->Children)
 	{
@@ -663,11 +679,4 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::Render(const TSharedPtr<FMarkdownRen
 			break;
 		}
 	}
-
-	return SNew(SScrollBox)
-		+ SScrollBox::Slot()
-		.Padding(8)
-		[
-			VBox
-		];
 }

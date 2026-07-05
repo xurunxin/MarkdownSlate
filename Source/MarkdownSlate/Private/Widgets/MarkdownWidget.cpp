@@ -161,6 +161,28 @@ void UMarkdownWidget::SetMarkdownText(const FString& InText)
 	if (MySlateWidget.IsValid()) MySlateWidget->SetMarkdownText(InText);
 }
 
+void UMarkdownWidget::BeginStreamingMarkdown()
+{
+	MarkdownText.Reset();
+	if (MySlateWidget.IsValid()) MySlateWidget->BeginStreamingMarkdown();
+}
+
+void UMarkdownWidget::AppendMarkdownChunk(const FString& Chunk)
+{
+	if (Chunk.IsEmpty())
+	{
+		return;
+	}
+
+	MarkdownText += Chunk;
+	if (MySlateWidget.IsValid()) MySlateWidget->AppendMarkdownChunk(Chunk);
+}
+
+void UMarkdownWidget::EndStreamingMarkdown()
+{
+	if (MySlateWidget.IsValid()) MySlateWidget->EndStreamingMarkdown();
+}
+
 void UMarkdownWidget::RefreshDisplayMarkdown()
 {
 	if (MySlateWidget.IsValid())
@@ -168,7 +190,6 @@ void UMarkdownWidget::RefreshDisplayMarkdown()
 		auto Config = BuildThemeConfig();
 		Config.OnLinkClicked = [this](const FString& Url) { OnNativeLinkClicked(Url); };
 		MySlateWidget->SetThemeConfig(Config);
-		MySlateWidget->RefreshDisplay();
 	}
 }
 

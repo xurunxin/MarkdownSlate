@@ -2,8 +2,45 @@
 #include "Emoji/MarkdownEmojiScanner.h"
 #include "Parser/MarkdownParser.h"
 #include "Render/MarkdownRenderBuilder.h"
+#include "Streaming/MarkdownStreamingBuffer.h"
+#include "Widgets/MarkdownWidget.h"
 
 #if WITH_AUTOMATION_TESTS
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingBufferStableBoundaryTest, "MarkdownSlate.StreamingBuffer.StableBoundary", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingBufferStableBoundaryTest::RunTest(const FString& Parameters)
+{
+	FMarkdownStreamingBuffer Buffer;
+
+	Buffer.Append(TEXT("First line"));
+	TestEqual(TEXT("No newline remains pending"), Buffer.GetStableText(), FString());
+	TestEqual(TEXT("Pending holds incomplete line"), Buffer.GetPendingText(), FString(TEXT("First line")));
+
+	Buffer.Append(TEXT("\nSecond"));
+	TestEqual(TEXT("Newline commits stable text"), Buffer.GetStableText(), FString(TEXT("First line\n")));
+	TestEqual(TEXT("Pending holds suffix"), Buffer.GetPendingText(), FString(TEXT("Second")));
+
+	Buffer.Reset();
+	TestEqual(TEXT("Reset clears stable text"), Buffer.GetStableText(), FString());
+	TestEqual(TEXT("Reset clears pending text"), Buffer.GetPendingText(), FString());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetStreamingApiTest, "MarkdownSlate.Widget.StreamingApi", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownWidgetStreamingApiTest::RunTest(const FString& Parameters)
+{
+	UMarkdownWidget* Widget = NewObject<UMarkdownWidget>();
+	TestNotNull(TEXT("Widget"), Widget);
+
+	Widget->BeginStreamingMarkdown();
+	Widget->AppendMarkdownChunk(TEXT("Hello "));
+	Widget->AppendMarkdownChunk(TEXT("world\n"));
+	Widget->EndStreamingMarkdown();
+
+	TestEqual(TEXT("Streaming preserves public markdown text"), Widget->MarkdownText, FString(TEXT("Hello world\n")));
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownParserHeadingTest, "MarkdownSlate.Parser.Heading", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownParserHeadingTest::RunTest(const FString& Parameters)
