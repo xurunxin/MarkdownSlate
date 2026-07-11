@@ -12,6 +12,8 @@
 #include "Widgets/MarkdownWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Slate/WidgetRenderer.h"
 #include "Tests/AutomationCommon.h"
 
 #if WITH_AUTOMATION_TESTS
@@ -405,6 +407,53 @@ bool FMarkdownParserParagraphTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Found paragraph"), bFound);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMarkdownPlainInlineLayoutWrapTest,
+	"MarkdownSlate.Renderer.PlainInlineLayoutWrap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter | EAutomationTestFlags::NonNullRHI)
+
+bool FMarkdownPlainInlineLayoutWrapTest::RunTest(const FString& Parameters)
+{
+	const FString Markdown = TEXT("A long ordinary clinical explanation should wrap through Slate layout while preserving every original character and without inserting hard line breaks into the Markdown model.");
+	TestFalse(TEXT("Plain Markdown control contains no source newline"), Markdown.Contains(TEXT("\n")));
+
+	FMarkdownParser Parser;
+	FMarkdownRenderBuilder Builder;
+	const TSharedPtr<FMarkdownBlockNode> AstRoot = Parser.Parse(Markdown);
+	const TSharedPtr<FMarkdownRenderNode> RenderRoot = Builder.Build(AstRoot);
+	if (!TestNotNull(TEXT("Plain Markdown render root builds"), RenderRoot.Get()) ||
+		!TestTrue(TEXT("Plain Markdown render root contains a paragraph"), RenderRoot->Children.Num() > 0))
+	{
+		return false;
+	}
+
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	Theme.WrapTextWidth = 160.0f;
+	const TSharedRef<SWidget> ParagraphWidget = FMarkdownSlateRenderer::RenderNode(RenderRoot->Children[0], Theme);
+	FWidgetRenderer Renderer(false, true);
+	ParagraphWidget->SlatePrepass(1.0f);
+	UTextureRenderTarget2D* RenderTarget = Renderer.DrawWidget(ParagraphWidget, FVector2D(180.0f, 400.0f));
+	ParagraphWidget->SlatePrepass(1.0f);
+
+	TestNotNull(TEXT("Plain inline wrap render target creates"), RenderTarget);
+	const FVector2D DesiredSize = ParagraphWidget->GetDesiredSize();
+	const FVector2D CachedSize = ParagraphWidget->GetTickSpaceGeometry().GetLocalSize();
+	AddInfo(FString::Printf(TEXT("Plain inline wrap geometry desired=(%.2f,%.2f) cached=(%.2f,%.2f)"), DesiredSize.X, DesiredSize.Y, CachedSize.X, CachedSize.Y));
+	TestTrue(TEXT("Plain inline desired width respects the positive theme wrap width"), DesiredSize.X <= Theme.WrapTextWidth + 1.0f);
+	TestTrue(TEXT("Plain inline cached width stays inside the render allocation"), CachedSize.X <= 180.0f + 1.0f);
+	TestTrue(TEXT("Plain inline desired layout grows vertically after wrapping"), DesiredSize.Y >= 60.0f);
+	TestFalse(TEXT("Renderer layout wrapping does not mutate source Markdown"), Markdown.Contains(TEXT("\n")));
+
+	Theme.WrapTextWidth = 0.0f;
+	const TSharedRef<SWidget> NonPositiveWrapWidget = FMarkdownSlateRenderer::RenderNode(RenderRoot->Children[0], Theme);
+	NonPositiveWrapWidget->SlatePrepass(1.0f);
+	const FVector2D NonPositiveDesiredSize = NonPositiveWrapWidget->GetDesiredSize();
+	TestTrue(TEXT("Non-positive wrap width retains a safe positive desired width"), NonPositiveDesiredSize.X > 0.0f);
+	TestTrue(TEXT("Non-positive wrap width retains a safe positive desired height"), NonPositiveDesiredSize.Y > 0.0f);
+	TestFalse(TEXT("Non-positive wrap width also preserves the source Markdown"), Markdown.Contains(TEXT("\n")));
 	return true;
 }
 

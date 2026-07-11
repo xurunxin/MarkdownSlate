@@ -214,33 +214,63 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 
 		FMarkdownEmojiScanner Scanner(EmojiCfg);
 		TArray<FMarkdownEmojiRun> Runs = Scanner.ScanText(Text);
-		if (Runs.Num() > 0)
+		const bool bContainsEmoji = Runs.ContainsByPredicate([](const FMarkdownEmojiRun& Run)
 		{
-			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
+			return Run.bIsEmoji;
+		});
+		if (bContainsEmoji)
+		{
+			TSharedRef<SWrapBox> RunBox = SNew(SWrapBox)
+				.Orientation(Orient_Horizontal)
+				.UseAllottedSize(true);
 			for (const auto& Run : Runs)
 			{
-				RunBox->AddSlot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				[
-					SNew(SMarkdownEmojiRun)
+				TSharedRef<SWidget> RunWidget = SNullWidget::NullWidget;
+				if (Run.bIsEmoji)
+				{
+					RunWidget = SNew(SMarkdownEmojiRun)
 						.Run(Run)
 						.FontInfo(BuildStyledFont(Style))
 						.EmojiFontInfo(Theme.EmojiFont)
 						.FontSize(Style.FontSize)
 						.TextColor(Style.Color)
 						.EmojiProvider(Theme.EmojiProvider)
-						.Config(EmojiCfg)
-				];
+						.Config(EmojiCfg);
+				}
+				else
+				{
+					TSharedRef<STextBlock> PlainText = SNew(STextBlock)
+						.Text(FText::FromString(Run.EmojiSequence))
+						.Font(BuildStyledFont(Style))
+						.ColorAndOpacity(FSlateColor(Style.Color));
+					if (Theme.WrapTextWidth > 0.0f)
+					{
+						PlainText->SetAutoWrapText(true);
+						PlainText->SetWrapTextAt(Theme.WrapTextWidth);
+					}
+					RunWidget = PlainText;
+				}
+
+				RunBox->AddSlot()
+					.VAlign(VAlign_Center)
+					[
+						RunWidget
+					];
 			}
 			return RunBox;
 		}
 	}
 
-	return SNew(STextBlock)
+	TSharedRef<STextBlock> TextBlock = SNew(STextBlock)
 		.Text(FText::FromString(Text))
 		.Font(BuildStyledFont(Style))
 		.ColorAndOpacity(FSlateColor(Style.Color));
+	if (Theme.WrapTextWidth > 0.0f)
+	{
+		TextBlock->SetAutoWrapText(true);
+		TextBlock->SetWrapTextAt(Theme.WrapTextWidth);
+	}
+	return TextBlock;
 }
 
 static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme, const FInlineRenderStyle& Style)
