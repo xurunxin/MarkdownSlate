@@ -299,9 +299,17 @@ bool FMarkdownEmojiAtlasProviderReuseTest::RunTest(const FString& Parameters)
 	FMarkdownAtlasEmojiProvider FirstProvider(Config);
 	FMarkdownAtlasEmojiProvider SecondProvider(Config);
 
-	TestTrue(TEXT("First provider preloads the emoji atlas"), FirstProvider.GetAtlasPtr()->AutoLoadAtlas(Config.TwemojiAssetRoot));
 	TestTrue(TEXT("Second provider reuses the preloaded emoji atlas"), FirstProvider.GetAtlas() == SecondProvider.GetAtlas());
+	TestTrue(TEXT("Shared emoji atlas is already loaded before providers are created"), FirstProvider.SupportsAtlasRendering());
 	TestTrue(TEXT("Reused emoji atlas remains renderable"), SecondProvider.SupportsAtlasRendering());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiStartupAtlasPreloadTest, "MarkdownSlate.Emoji.StartupAtlasPreload", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiStartupAtlasPreloadTest::RunTest(const FString& Parameters)
+{
+	FMarkdownAtlasEmojiProvider Provider;
+	TestTrue(TEXT("MarkdownSlate module startup preloads the default emoji atlas"), Provider.SupportsAtlasRendering());
 	return true;
 }
 
