@@ -292,6 +292,19 @@ bool FMarkdownEmojiDefaultAtlasFirstTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiAtlasProviderReuseTest, "MarkdownSlate.Emoji.AtlasProviderReuse", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiAtlasProviderReuseTest::RunTest(const FString& Parameters)
+{
+	FMarkdownEmojiConfig Config;
+	FMarkdownAtlasEmojiProvider FirstProvider(Config);
+	FMarkdownAtlasEmojiProvider SecondProvider(Config);
+
+	TestTrue(TEXT("First provider preloads the emoji atlas"), FirstProvider.GetAtlasPtr()->AutoLoadAtlas(Config.TwemojiAssetRoot));
+	TestTrue(TEXT("Second provider reuses the preloaded emoji atlas"), FirstProvider.GetAtlas() == SecondProvider.GetAtlas());
+	TestTrue(TEXT("Reused emoji atlas remains renderable"), SecondProvider.SupportsAtlasRendering());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFirstTest, "MarkdownSlate.Emoji.PlatformFontFirst", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownEmojiPlatformFontFirstTest::RunTest(const FString& Parameters)
 {
