@@ -2,6 +2,7 @@
 #include "Table/SMarkdownTable.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/SBoxPanel.h"
@@ -218,7 +219,8 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 		});
 		if (bContainsEmoji)
 		{
-			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
+			TSharedRef<SWrapBox> RunBox = SNew(SWrapBox)
+				.UseAllottedSize(true);
 			for (const auto& Run : Runs)
 			{
 				TSharedRef<SWidget> RunWidget = SNullWidget::NullWidget;
@@ -243,7 +245,7 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 				}
 
 				RunBox->AddSlot()
-					.AutoWidth()
+					.FillEmptySpace(false)
 					.VAlign(VAlign_Center)
 					[
 						RunWidget
@@ -398,12 +400,13 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderInlines(const TSharedPtr<FMark
 		return SNew(STextBlock).Text(Node.IsValid() ? Node->TextContent : FText::GetEmpty());
 	}
 
-	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
+	TSharedRef<SWrapBox> InlineBox = SNew(SWrapBox)
+		.UseAllottedSize(true);
 
 	for (const auto& Child : Node->Children)
 	{
 		InlineBox->AddSlot()
-			.AutoWidth()
+			.FillEmptySpace(false)
 			.Padding(FMargin(0))
 			.VAlign(VAlign_Center)
 			[
@@ -462,13 +465,14 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 		Prefix = TEXT("\u2022 ");
 	}
 
-	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
+	TSharedRef<SWrapBox> InlineBox = SNew(SWrapBox)
+		.UseAllottedSize(true);
 
 	// Marker (bullet / checkbox / number)
 	if (Node.bIsTaskItem)
 	{
 		InlineBox->AddSlot()
-			.AutoWidth()
+			.FillEmptySpace(false)
 			.VAlign(VAlign_Center)
 			.Padding(FMargin(0, 0, 4, 0))
 			[
@@ -480,7 +484,7 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 	else
 	{
 		InlineBox->AddSlot()
-			.AutoWidth()
+			.FillEmptySpace(false)
 			.VAlign(VAlign_Center)
 			.Padding(FMargin(0, 0, 2, 0))
 			[
@@ -505,7 +509,7 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 			continue;
 		}
 		InlineBox->AddSlot()
-			.AutoWidth()
+			.FillEmptySpace(false)
 			.VAlign(VAlign_Center)
 			[
 				RenderInlineNode(Child, ListTheme, MakeBodyStyle(ListTheme))

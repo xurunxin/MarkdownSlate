@@ -833,7 +833,19 @@ bool FMarkdownRendererInlineNoWrapTest::RunTest(const FString& Parameters)
 	}
 
 	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderNode(Root->Children[0], FMarkdownSlateThemeConfig::Default());
-	TestEqual(TEXT("Inline fragments use a non-wrapping horizontal layout"), Rendered->GetTypeAsString(), FString(TEXT("SHorizontalBox")));
+	TestEqual(TEXT("Paragraph inline flow remains wrappable"), Rendered->GetTypeAsString(), FString(TEXT("SWrapBox")));
+
+	bool bFoundNonWrappingInlineContainer = false;
+	const FChildren* Children = Rendered->GetChildren();
+	for (int32 Index = 0; Children && Index < Children->Num(); ++Index)
+	{
+		if (Children->GetChildAt(Index)->GetTypeAsString() == TEXT("SHorizontalBox"))
+		{
+			bFoundNonWrappingInlineContainer = true;
+			break;
+		}
+	}
+	TestTrue(TEXT("Nested Inline fragments use a non-wrapping horizontal layout"), bFoundNonWrappingInlineContainer);
 	return true;
 }
 
