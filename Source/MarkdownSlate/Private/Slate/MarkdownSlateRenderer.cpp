@@ -4,7 +4,6 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SOverlay.h"
-#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
@@ -184,13 +183,12 @@ static TSharedRef<SWidget> RenderInlineChildren(const TSharedPtr<FMarkdownRender
 			.ColorAndOpacity(FSlateColor(Style.Color));
 	}
 
-	TSharedRef<SWrapBox> WrapBox = SNew(SWrapBox)
-		.Orientation(Orient_Horizontal)
-		.UseAllottedSize(true);
+	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
 
 	for (const auto& Child : Node->Children)
 	{
-		WrapBox->AddSlot()
+		InlineBox->AddSlot()
+			.AutoWidth()
 			.Padding(FMargin(0))
 			.VAlign(VAlign_Center)
 			[
@@ -198,7 +196,7 @@ static TSharedRef<SWidget> RenderInlineChildren(const TSharedPtr<FMarkdownRender
 			];
 	}
 
-	return WrapBox;
+	return InlineBox;
 }
 
 static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkdownSlateThemeConfig& Theme, const FInlineRenderStyle& Style)
@@ -220,9 +218,7 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 		});
 		if (bContainsEmoji)
 		{
-			TSharedRef<SWrapBox> RunBox = SNew(SWrapBox)
-				.Orientation(Orient_Horizontal)
-				.UseAllottedSize(true);
+			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
 			for (const auto& Run : Runs)
 			{
 				TSharedRef<SWidget> RunWidget = SNullWidget::NullWidget;
@@ -243,15 +239,11 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 						.Text(FText::FromString(Run.EmojiSequence))
 						.Font(BuildStyledFont(Style))
 						.ColorAndOpacity(FSlateColor(Style.Color));
-					if (Theme.WrapTextWidth > 0.0f)
-					{
-						PlainText->SetAutoWrapText(true);
-						PlainText->SetWrapTextAt(Theme.WrapTextWidth);
-					}
 					RunWidget = PlainText;
 				}
 
 				RunBox->AddSlot()
+					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
 						RunWidget
@@ -406,13 +398,12 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderInlines(const TSharedPtr<FMark
 		return SNew(STextBlock).Text(Node.IsValid() ? Node->TextContent : FText::GetEmpty());
 	}
 
-	TSharedRef<SWrapBox> WrapBox = SNew(SWrapBox)
-		.Orientation(Orient_Horizontal)
-		.UseAllottedSize(true);
+	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
 
 	for (const auto& Child : Node->Children)
 	{
-		WrapBox->AddSlot()
+		InlineBox->AddSlot()
+			.AutoWidth()
 			.Padding(FMargin(0))
 			.VAlign(VAlign_Center)
 			[
@@ -420,7 +411,7 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderInlines(const TSharedPtr<FMark
 			];
 	}
 
-	return WrapBox;
+	return InlineBox;
 }
 
 // ---- block rendering ----
@@ -471,14 +462,13 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 		Prefix = TEXT("\u2022 ");
 	}
 
-	TSharedRef<SWrapBox> WrapBox = SNew(SWrapBox)
-		.Orientation(Orient_Horizontal)
-		.UseAllottedSize(true);
+	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
 
 	// Marker (bullet / checkbox / number)
 	if (Node.bIsTaskItem)
 	{
-		WrapBox->AddSlot()
+		InlineBox->AddSlot()
+			.AutoWidth()
 			.VAlign(VAlign_Center)
 			.Padding(FMargin(0, 0, 4, 0))
 			[
@@ -489,7 +479,8 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 	}
 	else
 	{
-		WrapBox->AddSlot()
+		InlineBox->AddSlot()
+			.AutoWidth()
 			.VAlign(VAlign_Center)
 			.Padding(FMargin(0, 0, 2, 0))
 			[
@@ -513,7 +504,8 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 		{
 			continue;
 		}
-		WrapBox->AddSlot()
+		InlineBox->AddSlot()
+			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
 				RenderInlineNode(Child, ListTheme, MakeBodyStyle(ListTheme))
@@ -561,12 +553,12 @@ static TSharedRef<SWidget> CreateListItemWidget(const FMarkdownRenderNode& Node,
 		}
 
 		TSharedRef<SVerticalBox> Outer = SNew(SVerticalBox);
-		Outer->AddSlot().AutoHeight()[WrapBox];
+		Outer->AddSlot().AutoHeight()[InlineBox];
 		Outer->AddSlot().AutoHeight().Padding(Theme.ListItemIndent, 0, 0, 0)[SubListBox];
 		return Outer;
 	}
 
-	return WrapBox;
+	return InlineBox;
 }
 
 TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme)

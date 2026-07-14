@@ -291,8 +291,8 @@ bool FMarkdownEmojiDefaultAtlasFirstTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFallsBackToAtlasTest, "MarkdownSlate.Emoji.PlatformFontFallsBackToAtlas", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
-bool FMarkdownEmojiPlatformFontFallsBackToAtlasTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFirstTest, "MarkdownSlate.Emoji.PlatformFontFirst", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiPlatformFontFirstTest::RunTest(const FString& Parameters)
 {
 	FMarkdownSlateThemeConfig ThemeConfig = FMarkdownSlateThemeConfig::Default();
 	FMarkdownAtlasEmojiProvider Provider;
@@ -321,7 +321,7 @@ bool FMarkdownEmojiPlatformFontFallsBackToAtlasTest::RunTest(const FString& Para
 	TestEqual(TEXT("Emoji run has one child"), Children->Num(), 1);
 	if (Children->Num() > 0)
 	{
-		TestEqual(TEXT("Platform font mode uses visible atlas image when available"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("SImage")));
+        TestEqual(TEXT("Platform font mode keeps the configured emoji font"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("STextBlock")));
 	}
 	return true;
 }
@@ -815,6 +815,25 @@ bool FMarkdownRenderBuilderNestedInlineTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Strong inline preserves child text"), bFoundStrongWithText);
 	TestTrue(TEXT("Link inline preserves child text"), bFoundLinkWithText);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererInlineNoWrapTest, "MarkdownSlate.Renderer.InlineNoWrap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererInlineNoWrapTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+	FMarkdownRenderBuilder Builder;
+
+	const auto Ast = Parser.Parse(TEXT("Before **bold** [link](https://example.com) ~~strike~~ `code` after"));
+	const auto Root = Builder.Build(Ast);
+	TestTrue(TEXT("Root contains one paragraph"), Root.IsValid() && Root->Children.Num() == 1);
+	if (!Root.IsValid() || Root->Children.Num() != 1)
+	{
+		return false;
+	}
+
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderNode(Root->Children[0], FMarkdownSlateThemeConfig::Default());
+	TestEqual(TEXT("Inline fragments use a non-wrapping horizontal layout"), Rendered->GetTypeAsString(), FString(TEXT("SHorizontalBox")));
 	return true;
 }
 
