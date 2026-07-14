@@ -15,6 +15,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Slate/WidgetRenderer.h"
 #include "Tests/AutomationCommon.h"
+#include "Widgets/Text/STextBlock.h"
 
 #if WITH_AUTOMATION_TESTS
 
@@ -322,6 +323,38 @@ bool FMarkdownEmojiPlatformFontFirstTest::RunTest(const FString& Parameters)
 	if (Children->Num() > 0)
 	{
         TestEqual(TEXT("Platform font mode keeps the configured emoji font"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("STextBlock")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiTwemojiFirstNoFontFallbackTest, "MarkdownSlate.Emoji.TwemojiFirstNoFontFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiTwemojiFirstNoFontFallbackTest::RunTest(const FString& Parameters)
+{
+	const FMarkdownSlateThemeConfig ThemeConfig = FMarkdownSlateThemeConfig::Default();
+	FMarkdownEmojiRun Run;
+	Run.EmojiSequence = TEXT("馃榾");
+	Run.TwemojiCode = TEXT("1f600");
+	Run.bIsEmoji = true;
+
+	FMarkdownEmojiConfig Config;
+	Config.RenderMode = EMarkdownEmojiRenderMode::TwemojiFirst;
+	Config.bAllowTwemojiFallback = true;
+
+	const TSharedRef<SMarkdownEmojiRun> Widget = SNew(SMarkdownEmojiRun)
+		.Run(Run)
+		.FontSize(24)
+		.FontInfo(ThemeConfig.DefaultFont)
+		.EmojiFontInfo(ThemeConfig.EmojiFont)
+		.TextColor(FLinearColor::White)
+		.Config(Config);
+
+	const FChildren* Children = Widget->GetChildren();
+	TestEqual(TEXT("Twemoji-first emoji run has one child"), Children->Num(), 1);
+	if (Children->Num() == 1)
+	{
+		TestEqual(TEXT("Twemoji-first without an atlas uses a text fallback"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("STextBlock")));
+		const TSharedRef<const STextBlock> TextFallback = StaticCastSharedRef<const STextBlock>(Children->GetChildAt(0));
+		TestEqual(TEXT("Twemoji-first fallback does not use the emoji font"), TextFallback->GetFont().FontObject, ThemeConfig.DefaultFont.FontObject);
 	}
 	return true;
 }

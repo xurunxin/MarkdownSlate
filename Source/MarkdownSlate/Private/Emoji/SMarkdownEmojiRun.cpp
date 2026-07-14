@@ -70,11 +70,11 @@ void SMarkdownEmojiRun::Construct(const FArguments& InArgs)
 			return;
 		}
 
-		if (bHasEmojiFont)
-		{
-			ChildSlot[MakeText(TextEmojiFont, false)];
-			return;
-		}
+		// TwemojiFirst must never render through the platform color emoji font.
+		// The atlas can become available after the first widget construction, so
+		// use safe text until the next refresh can resolve its image brush.
+		ChildSlot[MakeText(UseFont, true)];
+		return;
 	}
 	else if (Config.RenderMode == EMarkdownEmojiRenderMode::PlatformFontFirst)
 	{
