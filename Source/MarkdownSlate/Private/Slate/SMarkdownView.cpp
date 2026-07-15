@@ -3,7 +3,6 @@
 #include "Render/MarkdownRenderBuilder.h"
 #include "Parser/MarkdownParser.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -275,7 +274,6 @@ void SMarkdownView::RefreshDisplay()
 	}
 
 	bIsStreamingMarkdown = false;
-	StreamingScrollBox.Reset();
 	StreamingContentBox.Reset();
 	PendingContentBox.Reset();
 	ContentBox->ClearChildren();
@@ -342,7 +340,6 @@ void SMarkdownView::BeginStreamingMarkdown()
 	StreamingBuffer.Reset();
 	StreamingFullText.Reset();
 	RenderedStableTextLen = 0;
-	StreamingScrollBox.Reset();
 	StreamingContentBox.Reset();
 	PendingContentBox.Reset();
 	MarkdownText.Set(FString());
@@ -354,13 +351,9 @@ void SMarkdownView::BeginStreamingMarkdown()
 
 	ContentBox->ClearChildren();
 	ContentBox->AddSlot()
+		.AutoHeight()
 		[
-			SAssignNew(StreamingScrollBox, SScrollBox)
-			+ SScrollBox::Slot()
-			.Padding(8)
-			[
-				SAssignNew(StreamingContentBox, SVerticalBox)
-			]
+			SAssignNew(StreamingContentBox, SVerticalBox)
 		];
 }
 
@@ -382,7 +375,6 @@ void SMarkdownView::AppendMarkdownChunk(const FString& Chunk)
 
 	AppendStableStreamingText(StreamingBuffer.GetStableText());
 	UpdatePendingStreamingText(StreamingBuffer.GetPendingText());
-	ScrollStreamingContentToEnd();
 }
 
 void SMarkdownView::EndStreamingMarkdown()
@@ -394,11 +386,10 @@ void SMarkdownView::EndStreamingMarkdown()
 
 	const FString PendingText = StreamingBuffer.GetPendingText();
 	if (!PendingText.IsEmpty())
-	{
-		AppendStableStreamingText(StreamingBuffer.GetStableText() + PendingText);
-		UpdatePendingStreamingText(FString());
-		ScrollStreamingContentToEnd();
-	}
+		{
+			AppendStableStreamingText(StreamingBuffer.GetStableText() + PendingText);
+			UpdatePendingStreamingText(FString());
+		}
 
 	bIsStreamingMarkdown = false;
 	StreamingBuffer.Reset();
@@ -426,7 +417,6 @@ void SMarkdownView::AppendStableStreamingText(const FString& StableText)
 		FMarkdownSlateRenderer::AppendChildren(StreamingContentBox.ToSharedRef(), Root, ThemeConfig);
 	}
 	RenderedStableTextLen = StableText.Len();
-	ScrollStreamingContentToEnd();
 }
 
 void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
@@ -468,7 +458,6 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 				ThemeConfig.BodyFontSize,
 				ThemeConfig.BodyTextColor)
 		);
-		ScrollStreamingContentToEnd();
 		return;
 	}
 
@@ -478,13 +467,4 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 		FMarkdownSlateRenderer::AppendChildren(PendingVBox, PendingRoot, ThemeConfig);
 	}
 	PendingContentBox->SetContent(PendingVBox);
-	ScrollStreamingContentToEnd();
-}
-
-void SMarkdownView::ScrollStreamingContentToEnd()
-{
-	if (StreamingScrollBox.IsValid())
-	{
-		StreamingScrollBox->ScrollToEnd();
-	}
 }

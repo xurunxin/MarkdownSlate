@@ -1026,6 +1026,32 @@ bool FMarkdownStreamingTableCandidateStabilityTest::RunTest(const FString& Param
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingExpandsIntoParentTest, "MarkdownSlate.Streaming.ExpandsIntoParent", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingExpandsIntoParentTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("## Streaming table\n\n| Doctor | Time |\n| --- | --- |\n| Alice | Morning |\n"));
+
+	bool bContainsNestedScrollBox = false;
+	TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+	Visit = [&bContainsNestedScrollBox, &Visit](const TSharedRef<const SWidget>& Widget)
+	{
+		bContainsNestedScrollBox |= Widget->GetTypeAsString() == TEXT("SScrollBox");
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 Index = 0; !bContainsNestedScrollBox && Children && Index < Children->Num(); ++Index)
+		{
+			Visit(Children->GetChildAt(Index));
+		}
+	};
+	Visit(StaticCastSharedRef<const SWidget>(MarkdownView));
+
+	TestFalse(
+		TEXT("Streaming Markdown grows in its parent instead of creating a nested scroll viewport"),
+		bContainsNestedScrollBox);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownTableColumnContentWeightsTest, "MarkdownSlate.Table.ColumnContentWeights", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownTableColumnContentWeightsTest::RunTest(const FString& Parameters)
 {
