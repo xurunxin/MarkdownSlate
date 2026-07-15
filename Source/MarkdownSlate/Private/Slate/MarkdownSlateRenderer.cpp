@@ -178,10 +178,12 @@ static TSharedRef<SWidget> RenderInlineChildren(const TSharedPtr<FMarkdownRender
 {
 	if (!Node.IsValid() || Node->Children.Num() == 0)
 	{
-		return SNew(STextBlock)
-			.Text(Node.IsValid() ? Node->TextContent : FText::GetEmpty())
-			.Font(BuildStyledFont(Style))
-			.ColorAndOpacity(FSlateColor(Style.Color));
+		return FMarkdownSlateRenderer::RenderTextWithEmoji(
+			Node.IsValid() ? Node->TextContent.ToString() : FString(),
+			Theme,
+			BuildStyledFont(Style),
+			Style.FontSize,
+			Style.Color);
 	}
 
 	TSharedRef<SHorizontalBox> InlineBox = SNew(SHorizontalBox);
@@ -369,22 +371,26 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 				}))
 				.ContentPadding(FMargin(0))
 				.Cursor(EMouseCursor::Hand)
-				[
-					Node->Children.Num() > 0
-						? RenderInlineChildren(Node, Theme, LinkStyle)
-						: static_cast<TSharedRef<SWidget>>(SNew(STextBlock)
-							.Text(DisplayText)
-							.Font(BuildStyledFont(LinkStyle))
-							.ColorAndOpacity(Theme.LinkColor))
-				];
+					[
+						Node->Children.Num() > 0
+							? RenderInlineChildren(Node, Theme, LinkStyle)
+							: FMarkdownSlateRenderer::RenderTextWithEmoji(
+								DisplayText.ToString(),
+								Theme,
+								BuildStyledFont(LinkStyle),
+								LinkStyle.FontSize,
+								LinkStyle.Color)
+					];
 		}
 
 		return Node->Children.Num() > 0
 			? RenderInlineChildren(Node, Theme, LinkStyle)
-			: static_cast<TSharedRef<SWidget>>(SNew(STextBlock)
-				.Text(DisplayText)
-				.Font(BuildStyledFont(LinkStyle))
-				.ColorAndOpacity(Theme.LinkColor));
+			: FMarkdownSlateRenderer::RenderTextWithEmoji(
+				DisplayText.ToString(),
+				Theme,
+				BuildStyledFont(LinkStyle),
+				LinkStyle.FontSize,
+				LinkStyle.Color);
 	}
 
 	case EMarkdownRenderNodeType::Image:
@@ -409,7 +415,13 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderInlines(const TSharedPtr<FMark
 {
 	if (!Node.IsValid() || Node->Children.Num() == 0)
 	{
-		return SNew(STextBlock).Text(Node.IsValid() ? Node->TextContent : FText::GetEmpty());
+		const FInlineRenderStyle Style = MakeBodyStyle(Theme);
+		return FMarkdownSlateRenderer::RenderTextWithEmoji(
+			Node.IsValid() ? Node->TextContent.ToString() : FString(),
+			Theme,
+			BuildStyledFont(Style),
+			Style.FontSize,
+			Style.Color);
 	}
 
 	TSharedRef<SWrapBox> InlineBox = SNew(SWrapBox)
@@ -609,11 +621,16 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 			return RenderInlineChildren(Node, Theme, HeadingStyle);
 		}
 
-		return SNew(STextBlock)
-			.Text(Node->TextContent)
-			.Font(BuildStyledFont(FInlineRenderStyle{Theme.DefaultFont, FontSize, Theme.HeadingColor, true, false}))
-			.ColorAndOpacity(FSlateColor(Theme.HeadingColor))
-			.WrapTextAt(Theme.WrapTextWidth);
+			FInlineRenderStyle HeadingStyle = MakeBodyStyle(Theme);
+			HeadingStyle.FontSize = FontSize;
+			HeadingStyle.Color = Theme.HeadingColor;
+			HeadingStyle.bBold = true;
+			return FMarkdownSlateRenderer::RenderTextWithEmoji(
+				Node->TextContent.ToString(),
+				Theme,
+				BuildStyledFont(HeadingStyle),
+				HeadingStyle.FontSize,
+				HeadingStyle.Color);
 	}
 
 	case EMarkdownRenderNodeType::Paragraph:
@@ -621,11 +638,12 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 		{
 			return RenderInlines(Node, Theme);
 		}
-		return SNew(STextBlock)
-			.Text(Node->TextContent)
-			.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
-			.ColorAndOpacity(FSlateColor(Theme.BodyTextColor))
-			.WrapTextAt(Theme.WrapTextWidth);
+		return FMarkdownSlateRenderer::RenderTextWithEmoji(
+			Node->TextContent.ToString(),
+			Theme,
+			BuildFont(Theme.DefaultFont, Theme.BodyFontSize),
+			Theme.BodyFontSize,
+			Theme.BodyTextColor);
 
 	case EMarkdownRenderNodeType::Blockquote:
 	{
@@ -637,12 +655,12 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderNode(const TSharedPtr<FMarkdow
 			[
 				Node->Children.Num() > 0
 					? RenderInlines(Node, Theme)
-					: static_cast<TSharedRef<SWidget>>(
-						SNew(STextBlock)
-						.Text(Node->TextContent)
-						.Font(BuildFont(Theme.DefaultFont, Theme.BodyFontSize))
-						.ColorAndOpacity(FSlateColor(Theme.BodyTextColor))
-						.WrapTextAt(Theme.WrapTextWidth))
+				: FMarkdownSlateRenderer::RenderTextWithEmoji(
+					Node->TextContent.ToString(),
+					Theme,
+					BuildFont(Theme.DefaultFont, Theme.BodyFontSize),
+					Theme.BodyFontSize,
+					Theme.BodyTextColor)
 			];
 	}
 

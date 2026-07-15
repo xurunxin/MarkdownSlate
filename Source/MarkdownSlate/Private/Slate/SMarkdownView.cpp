@@ -118,6 +118,59 @@ bool ContainsMarkdownListLine(const FString& Text)
 	}
 	return false;
 }
+
+bool IsMarkdownTableDividerLine(const FString& Line)
+{
+	if (!Line.Contains(TEXT("|")))
+	{
+		return false;
+	}
+
+	TArray<FString> Cells;
+	Line.ParseIntoArray(Cells, TEXT("|"), true);
+	if (Cells.Num() < 2)
+	{
+		return false;
+	}
+
+	for (FString Cell : Cells)
+	{
+		Cell.TrimStartAndEndInline();
+		bool bContainsDash = false;
+		for (const TCHAR Character : Cell)
+		{
+			if (Character == TEXT('-'))
+			{
+				bContainsDash = true;
+				continue;
+			}
+			if (Character != TEXT(':') && !FChar::IsWhitespace(Character))
+			{
+				return false;
+			}
+		}
+		if (!bContainsDash)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool ContainsMarkdownTableCandidate(const FString& Text)
+{
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines, false);
+	for (int32 Index = 1; Index < Lines.Num(); ++Index)
+	{
+		if (Lines[Index - 1].Contains(TEXT("|")) && IsMarkdownTableDividerLine(Lines[Index]))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 }
 
 bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& PendingText)
@@ -133,6 +186,11 @@ bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& P
 	}
 
 	if (ContainsMarkdownListLine(PendingText))
+	{
+		return true;
+	}
+
+	if (ContainsMarkdownTableCandidate(PendingText))
 	{
 		return true;
 	}

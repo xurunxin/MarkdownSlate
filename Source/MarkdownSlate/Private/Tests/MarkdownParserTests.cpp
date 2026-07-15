@@ -8,6 +8,7 @@
 #include "Slate/MarkdownSlateRenderer.h"
 #include "Slate/SMarkdownView.h"
 #include "Streaming/MarkdownStreamingBuffer.h"
+#include "Table/MarkdownTableLayout.h"
 #include "Widgets/MarkdownStreamingPerfTestWidget.h"
 #include "Widgets/MarkdownWidget.h"
 #include "Blueprint/UserWidget.h"
@@ -955,6 +956,88 @@ bool FMarkdownRendererEmojiTextNoInternalWrapTest::RunTest(const FString& Parame
 		Theme.BodyTextColor);
 
 	TestEqual(TEXT("Emoji and adjacent text stay in one non-wrapping inline container"), Rendered->GetTypeAsString(), FString(TEXT("SHorizontalBox")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererInlineFallbackUsesEmojiRendererTest, "MarkdownSlate.Renderer.InlineFallbackUsesEmojiRenderer", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererInlineFallbackUsesEmojiRendererTest::RunTest(const FString& Parameters)
+{
+	FString EmojiText;
+	EmojiText.AppendChar(static_cast<TCHAR>(0xD83D));
+	EmojiText.AppendChar(static_cast<TCHAR>(0xDCCB));
+
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	FMarkdownAtlasEmojiProvider Provider;
+	Theme.EmojiProvider = &Provider;
+
+	const TSharedPtr<FMarkdownRenderNode> Node = MakeShared<FMarkdownRenderNode>();
+	Node->Type = EMarkdownRenderNodeType::Container;
+	Node->TextContent = FText::FromString(EmojiText);
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderInlines(Node, Theme);
+
+	bool bContainsEmojiRun = false;
+	TFunction<void(const TSharedRef<const SWidget>&)> FindEmojiRun;
+	FindEmojiRun = [&bContainsEmojiRun, &FindEmojiRun](const TSharedRef<const SWidget>& Widget)
+	{
+		bContainsEmojiRun |= Widget->GetTypeAsString() == TEXT("SMarkdownEmojiRun");
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 Index = 0; !bContainsEmojiRun && Children && Index < Children->Num(); ++Index)
+		{
+			FindEmojiRun(Children->GetChildAt(Index));
+		}
+	};
+	FindEmojiRun(StaticCastSharedRef<const SWidget>(Rendered));
+
+	TestTrue(TEXT("Inline fallback routes emoji text through the atlas renderer"), bContainsEmojiRun);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingTableCandidateStabilityTest, "MarkdownSlate.Streaming.TableCandidateStability", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingTableCandidateStabilityTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	auto ContainsTableGrid = [](const TSharedRef<SWidget>& Root)
+	{
+		bool bContainsTableGrid = false;
+		TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+		Visit = [&bContainsTableGrid, &Visit](const TSharedRef<const SWidget>& Widget)
+		{
+			bContainsTableGrid |= Widget->GetTypeAsString() == TEXT("SGridPanel");
+			const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+			for (int32 Index = 0; !bContainsTableGrid && Children && Index < Children->Num(); ++Index)
+			{
+				Visit(Children->GetChildAt(Index));
+			}
+		};
+		Visit(StaticCastSharedRef<const SWidget>(Root));
+		return bContainsTableGrid;
+	};
+
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("| Metric | Value |\n"));
+	MarkdownView->AppendMarkdownChunk(TEXT("| --- | --- |\n"));
+	TestFalse(TEXT("Incomplete table candidate remains on the stable plain-text path"), ContainsTableGrid(MarkdownView));
+
+	MarkdownView->AppendMarkdownChunk(TEXT("| Blood pressure | 120/80"));
+	TestFalse(TEXT("Additional table tokens do not switch the pending block to a rendered table"), ContainsTableGrid(MarkdownView));
+
+	MarkdownView->EndStreamingMarkdown();
+	TestTrue(TEXT("Completed table renders once streaming is finalized"), ContainsTableGrid(MarkdownView));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownTableColumnContentWeightsTest, "MarkdownSlate.Table.ColumnContentWeights", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownTableColumnContentWeightsTest::RunTest(const FString& Parameters)
+{
+	const TArray<float> Weights = FMarkdownTableLayout::NormalizeColumnWidths({40.0f, 240.0f}, 24.0f);
+	TestEqual(TEXT("Column layout returns one weight per column"), Weights.Num(), 2);
+	if (Weights.Num() != 2)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Longer content column receives more horizontal space"), Weights[1] > Weights[0]);
+	TestTrue(TEXT("Column weights are normalized"), FMath::IsNearlyEqual(Weights[0] + Weights[1], 1.0f));
 	return true;
 }
 
