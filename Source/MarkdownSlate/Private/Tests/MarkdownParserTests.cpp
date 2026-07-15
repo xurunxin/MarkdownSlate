@@ -1041,4 +1041,35 @@ bool FMarkdownTableColumnContentWeightsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingMultilineInlineStabilityTest, "MarkdownSlate.Streaming.MultilineInlineStability", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingMultilineInlineStabilityTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	auto ContainsRichInlineLayout = [](const TSharedRef<SWidget>& Root)
+	{
+		bool bContainsRichInlineLayout = false;
+		TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+		Visit = [&bContainsRichInlineLayout, &Visit](const TSharedRef<const SWidget>& Widget)
+		{
+			bContainsRichInlineLayout |= Widget->GetTypeAsString() == TEXT("SWrapBox");
+			const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+			for (int32 Index = 0; !bContainsRichInlineLayout && Children && Index < Children->Num(); ++Index)
+			{
+				Visit(Children->GetChildAt(Index));
+			}
+		};
+		Visit(StaticCastSharedRef<const SWidget>(Root));
+		return bContainsRichInlineLayout;
+	};
+
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("第一行 **跨行的长 Inline\n"));
+	MarkdownView->AppendMarkdownChunk(TEXT("第二行内容已经闭合**，但流式输出仍在继续。"));
+	TestFalse(TEXT("Closed multiline inline remains on the stable plain-text path while pending"), ContainsRichInlineLayout(MarkdownView));
+
+	MarkdownView->EndStreamingMarkdown();
+	TestTrue(TEXT("Completed multiline inline renders after streaming finalizes"), ContainsRichInlineLayout(MarkdownView));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

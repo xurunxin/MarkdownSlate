@@ -171,6 +171,15 @@ bool ContainsMarkdownTableCandidate(const FString& Text)
 	}
 	return false;
 }
+
+bool ContainsMarkdownInlineSyntax(const FString& Text)
+{
+	return CountUnescapedToken(Text, TEXT("`")) > 0 ||
+		CountUnescapedToken(Text, TEXT("*")) > 0 ||
+		CountUnescapedToken(Text, TEXT("_")) > 0 ||
+		CountUnescapedToken(Text, TEXT("~")) > 0 ||
+		CountUnescapedToken(Text, TEXT("[")) > 0;
+}
 }
 
 bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& PendingText)
@@ -195,9 +204,7 @@ bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& P
 		return true;
 	}
 
-	if ((CountUnescapedToken(PendingText, TEXT("`")) % 2) != 0 ||
-		(CountUnescapedToken(PendingText, TEXT("**")) % 2) != 0 ||
-		(CountUnescapedToken(PendingText, TEXT("__")) % 2) != 0)
+	if (ContainsMarkdownInlineSyntax(PendingText))
 	{
 		return true;
 	}
