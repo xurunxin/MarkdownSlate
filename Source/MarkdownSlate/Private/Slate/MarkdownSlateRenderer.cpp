@@ -200,8 +200,18 @@ static TSharedRef<SWidget> RenderInlineChildren(const TSharedPtr<FMarkdownRender
 	return InlineBox;
 }
 
-static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkdownSlateThemeConfig& Theme, const FInlineRenderStyle& Style)
+TSharedRef<SWidget> FMarkdownSlateRenderer::RenderTextWithEmoji(
+	const FString& Text,
+	const FMarkdownSlateThemeConfig& Theme,
+	const FSlateFontInfo& Font,
+	int32 FontSize,
+	const FLinearColor& Color)
 {
+	FInlineRenderStyle Style;
+	Style.Font = Font;
+	Style.FontSize = FontSize;
+	Style.Color = Color;
+
 	if (Theme.bEnableEmojiRendering)
 	{
 		FMarkdownEmojiConfig EmojiCfg;
@@ -219,8 +229,10 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 		});
 		if (bContainsEmoji)
 		{
-			TSharedRef<SWrapBox> RunBox = SNew(SWrapBox)
-				.UseAllottedSize(true);
+			// Keep a text/emoji sequence as one inline fragment. A wrap box treats
+			// the post-emoji text as a separate child, which can force it onto a new
+			// row with a different height while a streamed message is being updated.
+			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
 			for (const auto& Run : Runs)
 			{
 				TSharedRef<SWidget> RunWidget = SNullWidget::NullWidget;
@@ -245,7 +257,7 @@ static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkd
 				}
 
 				RunBox->AddSlot()
-					.FillEmptySpace(false)
+					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
 						RunWidget
@@ -275,7 +287,7 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 	{
 	case EMarkdownRenderNodeType::PlainText:
 	{
-		return RenderTextWithEmoji(Node->TextContent.ToString(), Theme, Style);
+		return FMarkdownSlateRenderer::RenderTextWithEmoji(Node->TextContent.ToString(), Theme, BuildStyledFont(Style), Style.FontSize, Style.Color);
 	}
 
 	case EMarkdownRenderNodeType::Strong:
@@ -331,7 +343,7 @@ static TSharedRef<SWidget> RenderInlineNode(const TSharedPtr<FMarkdownRenderNode
 			.BorderImage(&FRoundedBrushCache::Get().CodeBrush)
 			.Padding(FMargin(Theme.CodePaddingH, Theme.CodePaddingV))
 			[
-				RenderTextWithEmoji(GetInlineText(Node).ToString(), Theme, CodeStyle)
+				FMarkdownSlateRenderer::RenderTextWithEmoji(GetInlineText(Node).ToString(), Theme, BuildStyledFont(CodeStyle), CodeStyle.FontSize, CodeStyle.Color)
 			];
 	}
 

@@ -396,12 +396,12 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 		FSlateFontInfo Font = ThemeConfig.DefaultFont;
 		Font.Size = ThemeConfig.BodyFontSize;
 		PendingContentBox->SetContent(
-			SNew(STextBlock)
-			.Text(FText::FromString(PendingText))
-			.Font(Font)
-			.ColorAndOpacity(FSlateColor(ThemeConfig.BodyTextColor))
-			.AutoWrapText(true)
-			.WrapTextAt(ThemeConfig.WrapTextWidth)
+			FMarkdownSlateRenderer::RenderTextWithEmoji(
+				PendingText,
+				ThemeConfig,
+				Font,
+				ThemeConfig.BodyFontSize,
+				ThemeConfig.BodyTextColor)
 		);
 		ScrollStreamingContentToEnd();
 		return;

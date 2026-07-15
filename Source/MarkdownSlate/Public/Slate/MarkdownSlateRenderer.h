@@ -75,5 +75,6 @@ public:
 	static TSharedRef<SWidget> Render(const TSharedPtr<FMarkdownRenderNode>& RootNode, const FMarkdownSlateThemeConfig& Theme);
 	static TSharedRef<SWidget> RenderNode(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme);
 	static TSharedRef<SWidget> RenderInlines(const TSharedPtr<FMarkdownRenderNode>& Node, const FMarkdownSlateThemeConfig& Theme);
+	static TSharedRef<SWidget> RenderTextWithEmoji(const FString& Text, const FMarkdownSlateThemeConfig& Theme, const FSlateFontInfo& Font, int32 FontSize, const FLinearColor& Color);
 	static void AppendChildren(const TSharedRef<SVerticalBox>& VBox, const TSharedPtr<FMarkdownRenderNode>& RootNode, const FMarkdownSlateThemeConfig& Theme);
 };

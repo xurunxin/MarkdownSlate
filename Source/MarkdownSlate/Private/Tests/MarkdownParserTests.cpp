@@ -177,6 +177,41 @@ bool FMarkdownStreamingPendingInlineFallbackTest::RunTest(const FString& Paramet
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingPendingEmojiAtlasTest, "MarkdownSlate.Streaming.PendingEmojiAtlas", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingPendingEmojiAtlasTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	MarkdownView->SetThemeConfig(FMarkdownSlateThemeConfig::Default());
+
+	FString PendingText = TEXT("Streaming response ");
+	PendingText.AppendChar(static_cast<TCHAR>(0xD83D));
+	PendingText.AppendChar(static_cast<TCHAR>(0xDE0A));
+	MarkdownView->AppendMarkdownChunk(PendingText);
+
+	TFunction<bool(const TSharedRef<const SWidget>&)> ContainsEmojiRun;
+	ContainsEmojiRun = [&ContainsEmojiRun](const TSharedRef<const SWidget>& Widget)
+	{
+		if (Widget->GetTypeAsString() == TEXT("SMarkdownEmojiRun"))
+		{
+			return true;
+		}
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 ChildIndex = 0; Children && ChildIndex < Children->Num(); ++ChildIndex)
+		{
+			if (ContainsEmojiRun(Children->GetChildAt(ChildIndex)))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
+	TestTrue(
+		TEXT("Pending streaming text renders emoji through the atlas run"),
+		ContainsEmojiRun(StaticCastSharedRef<const SWidget>(MarkdownView)));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetStreamingBlueprintPerfTest, "MarkdownSlate.Widget.StreamingBlueprintPerf", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownWidgetStreamingBlueprintPerfTest::RunTest(const FString& Parameters)
 {
@@ -900,6 +935,26 @@ bool FMarkdownRendererInlineNoWrapTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("Nested Inline fragments use a non-wrapping horizontal layout"), bFoundNonWrappingInlineContainer);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererEmojiTextNoInternalWrapTest, "MarkdownSlate.Renderer.EmojiTextNoInternalWrap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererEmojiTextNoInternalWrapTest::RunTest(const FString& Parameters)
+{
+	FString Text = TEXT("Before ");
+	Text.AppendChar(static_cast<TCHAR>(0xD83D));
+	Text.AppendChar(static_cast<TCHAR>(0xDE0A));
+	Text += TEXT(" after");
+
+	const FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderTextWithEmoji(
+		Text,
+		Theme,
+		Theme.DefaultFont,
+		Theme.BodyFontSize,
+		Theme.BodyTextColor);
+
+	TestEqual(TEXT("Emoji and adjacent text stay in one non-wrapping inline container"), Rendered->GetTypeAsString(), FString(TEXT("SHorizontalBox")));
 	return true;
 }
 
