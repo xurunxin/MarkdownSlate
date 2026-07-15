@@ -14,6 +14,7 @@
 #include "Emoji/MarkdownEmojiScanner.h"
 #include "Emoji/SMarkdownEmojiRun.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Internationalization/BreakIterator.h"
 #include "UObject/UObjectGlobals.h"
 
 // Cached rounded brushes — updated when theme changes, shared across all widgets
@@ -231,39 +232,74 @@ TSharedRef<SWidget> FMarkdownSlateRenderer::RenderTextWithEmoji(
 		});
 		if (bContainsEmoji)
 		{
-			// Keep a text/emoji sequence as one inline fragment. A wrap box treats
-			// the post-emoji text as a separate child, which can force it onto a new
-			// row with a different height while a streamed message is being updated.
-			TSharedRef<SHorizontalBox> RunBox = SNew(SHorizontalBox);
-			for (const auto& Run : Runs)
+			const bool bShouldWrap = Theme.WrapTextWidth > 0.0f;
+			TSharedRef<SWrapBox> RunBox = SNew(SWrapBox)
+				.PreferredSize(bShouldWrap ? Theme.WrapTextWidth : TNumericLimits<float>::Max())
+				.UseAllottedSize(bShouldWrap);
+			const TSharedRef<IBreakIterator> LineBreakIterator = FBreakIterator::CreateLineBreakIterator();
+
+			auto AddPlainTextFragment = [&RunBox, &Style, &Theme, bShouldWrap](const FString& Fragment)
 			{
-				TSharedRef<SWidget> RunWidget = SNullWidget::NullWidget;
-				if (Run.bIsEmoji)
+				if (Fragment.IsEmpty())
 				{
-					RunWidget = SNew(SMarkdownEmojiRun)
-						.Run(Run)
-						.FontInfo(BuildStyledFont(Style))
-						.EmojiFontInfo(Theme.EmojiFont)
-						.FontSize(Style.FontSize)
-						.TextColor(Style.Color)
-						.EmojiProvider(Theme.EmojiProvider)
-						.Config(EmojiCfg);
+					return;
 				}
-				else
+
+				TSharedRef<STextBlock> PlainText = SNew(STextBlock)
+					.Text(FText::FromString(Fragment))
+					.Font(BuildStyledFont(Style))
+					.ColorAndOpacity(FSlateColor(Style.Color));
+				if (bShouldWrap)
 				{
-					TSharedRef<STextBlock> PlainText = SNew(STextBlock)
-						.Text(FText::FromString(Run.EmojiSequence))
-						.Font(BuildStyledFont(Style))
-						.ColorAndOpacity(FSlateColor(Style.Color));
-					RunWidget = PlainText;
+					PlainText->SetAutoWrapText(true);
+					PlainText->SetWrapTextAt(Theme.WrapTextWidth);
 				}
 
 				RunBox->AddSlot()
-					.AutoWidth()
+					.FillEmptySpace(false)
 					.VAlign(VAlign_Center)
 					[
-						RunWidget
+						PlainText
 					];
+			};
+
+			for (const auto& Run : Runs)
+			{
+				if (Run.bIsEmoji)
+				{
+					RunBox->AddSlot()
+						.FillEmptySpace(false)
+						.VAlign(VAlign_Center)
+						[
+							SNew(SMarkdownEmojiRun)
+							.Run(Run)
+							.FontInfo(BuildStyledFont(Style))
+							.EmojiFontInfo(Theme.EmojiFont)
+							.FontSize(Style.FontSize)
+							.TextColor(Style.Color)
+							.EmojiProvider(Theme.EmojiProvider)
+							.Config(EmojiCfg)
+						];
+				}
+				else
+				{
+					LineBreakIterator->SetString(Run.EmojiSequence);
+					int32 PreviousBreak = 0;
+					int32 CurrentBreak = 0;
+					while ((CurrentBreak = LineBreakIterator->MoveToNext()) != INDEX_NONE)
+					{
+						if (CurrentBreak > PreviousBreak)
+						{
+							AddPlainTextFragment(Run.EmojiSequence.Mid(PreviousBreak, CurrentBreak - PreviousBreak));
+						}
+						PreviousBreak = CurrentBreak;
+					}
+					if (PreviousBreak < Run.EmojiSequence.Len())
+					{
+						AddPlainTextFragment(Run.EmojiSequence.Mid(PreviousBreak));
+					}
+					LineBreakIterator->ClearString();
+				}
 			}
 			return RunBox;
 		}

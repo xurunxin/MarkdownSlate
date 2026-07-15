@@ -939,15 +939,16 @@ bool FMarkdownRendererInlineNoWrapTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererEmojiTextNoInternalWrapTest, "MarkdownSlate.Renderer.EmojiTextNoInternalWrap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
-bool FMarkdownRendererEmojiTextNoInternalWrapTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererEmojiTextWrapTest, "MarkdownSlate.Renderer.EmojiTextWrapsWithinWidth", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererEmojiTextWrapTest::RunTest(const FString& Parameters)
 {
-	FString Text = TEXT("Before ");
+	FString Text = TEXT("已经同步既往病历摘要，药物过敏需要特别注意 ");
 	Text.AppendChar(static_cast<TCHAR>(0xD83D));
 	Text.AppendChar(static_cast<TCHAR>(0xDE0A));
-	Text += TEXT(" after");
+	Text += TEXT(" 后续说明仍应在气泡可用宽度内提前换行，不能越过右侧边界后再被裁切。");
 
-	const FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	Theme.WrapTextWidth = 160.0f;
 	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderTextWithEmoji(
 		Text,
 		Theme,
@@ -955,7 +956,15 @@ bool FMarkdownRendererEmojiTextNoInternalWrapTest::RunTest(const FString& Parame
 		Theme.BodyFontSize,
 		Theme.BodyTextColor);
 
-	TestEqual(TEXT("Emoji and adjacent text stay in one non-wrapping inline container"), Rendered->GetTypeAsString(), FString(TEXT("SHorizontalBox")));
+	FWidgetRenderer Renderer(false, true);
+	Rendered->SlatePrepass(1.0f);
+	UTextureRenderTarget2D* RenderTarget = Renderer.DrawWidget(Rendered, FVector2D(Theme.WrapTextWidth, 300.0f));
+	Rendered->SlatePrepass(1.0f);
+
+	TestNotNull(TEXT("Mixed emoji text render target creates"), RenderTarget);
+	TestEqual(TEXT("Emoji and adjacent text share a wrapping inline flow"), Rendered->GetTypeAsString(), FString(TEXT("SWrapBox")));
+	TestTrue(TEXT("Mixed emoji text desired width stays inside the configured wrap width"), Rendered->GetDesiredSize().X <= Theme.WrapTextWidth + 1.0f);
+	TestTrue(TEXT("Mixed emoji text grows vertically after wrapping"), Rendered->GetDesiredSize().Y >= Theme.BodyFontSize * 2.0f);
 	return true;
 }
 
