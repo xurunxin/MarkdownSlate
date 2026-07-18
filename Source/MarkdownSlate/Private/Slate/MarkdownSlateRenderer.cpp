@@ -127,9 +127,9 @@ static FSlateFontInfo BuildStyledFont(const FInlineRenderStyle& Style)
 	FSlateFontInfo Font = Style.Font;
 	Font.Size = Style.FontSize;
 
-	if (Style.bFauxBold && Font.OutlineSettings.OutlineSize <= 0.0f)
+	if (Style.bFauxBold && Font.OutlineSettings.OutlineSize <= 0)
 	{
-		Font.OutlineSettings.OutlineSize = 0.35f;
+		Font.OutlineSettings.OutlineSize = 1;
 		Font.OutlineSettings.OutlineColor = Style.Color;
 		Font.OutlineSettings.bSeparateFillAlpha = true;
 	}
