@@ -81,9 +81,16 @@ FMarkdownSlateThemeConfig UMarkdownWidget::BuildThemeConfig() const
 	if (IsFontEmpty(Config.DefaultFont))
 		Config.DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", Config.BodyFontSize);
 	Config.DefaultFont.Size = Config.BodyFontSize;
-	if (IsFontEmpty(Config.EmojiFont))
+	if (Config.EmojiRenderMode != EMarkdownEmojiRenderMode::PlatformFontFirst)
+	{
+		Config.EmojiFont = FSlateFontInfo();
+	}
+	else if (IsFontEmpty(Config.EmojiFont))
 		Config.EmojiFont = FMarkdownSlateThemeConfig::MakeDefaultEmojiFont(Config.BodyFontSize);
-	Config.EmojiFont.Size = Config.BodyFontSize;
+	if (!IsFontEmpty(Config.EmojiFont))
+	{
+		Config.EmojiFont.Size = Config.BodyFontSize;
+	}
 
 	return Config;
 }

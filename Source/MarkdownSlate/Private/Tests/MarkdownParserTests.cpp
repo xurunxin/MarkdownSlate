@@ -8,11 +8,15 @@
 #include "Slate/MarkdownSlateRenderer.h"
 #include "Slate/SMarkdownView.h"
 #include "Streaming/MarkdownStreamingBuffer.h"
+#include "Table/MarkdownTableLayout.h"
 #include "Widgets/MarkdownStreamingPerfTestWidget.h"
 #include "Widgets/MarkdownWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Slate/WidgetRenderer.h"
 #include "Tests/AutomationCommon.h"
+#include "Widgets/Text/STextBlock.h"
 
 #if WITH_AUTOMATION_TESTS
 
@@ -174,6 +178,41 @@ bool FMarkdownStreamingPendingInlineFallbackTest::RunTest(const FString& Paramet
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingPendingEmojiAtlasTest, "MarkdownSlate.Streaming.PendingEmojiAtlas", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingPendingEmojiAtlasTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	MarkdownView->SetThemeConfig(FMarkdownSlateThemeConfig::Default());
+
+	FString PendingText = TEXT("Streaming response ");
+	PendingText.AppendChar(static_cast<TCHAR>(0xD83D));
+	PendingText.AppendChar(static_cast<TCHAR>(0xDE0A));
+	MarkdownView->AppendMarkdownChunk(PendingText);
+
+	TFunction<bool(const TSharedRef<const SWidget>&)> ContainsEmojiRun;
+	ContainsEmojiRun = [&ContainsEmojiRun](const TSharedRef<const SWidget>& Widget)
+	{
+		if (Widget->GetTypeAsString() == TEXT("SMarkdownEmojiRun"))
+		{
+			return true;
+		}
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 ChildIndex = 0; Children && ChildIndex < Children->Num(); ++ChildIndex)
+		{
+			if (ContainsEmojiRun(Children->GetChildAt(ChildIndex)))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
+	TestTrue(
+		TEXT("Pending streaming text renders emoji through the atlas run"),
+		ContainsEmojiRun(StaticCastSharedRef<const SWidget>(MarkdownView)));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownWidgetStreamingBlueprintPerfTest, "MarkdownSlate.Widget.StreamingBlueprintPerf", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 bool FMarkdownWidgetStreamingBlueprintPerfTest::RunTest(const FString& Parameters)
 {
@@ -289,8 +328,29 @@ bool FMarkdownEmojiDefaultAtlasFirstTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFallsBackToAtlasTest, "MarkdownSlate.Emoji.PlatformFontFallsBackToAtlas", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
-bool FMarkdownEmojiPlatformFontFallsBackToAtlasTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiAtlasProviderReuseTest, "MarkdownSlate.Emoji.AtlasProviderReuse", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiAtlasProviderReuseTest::RunTest(const FString& Parameters)
+{
+	FMarkdownEmojiConfig Config;
+	FMarkdownAtlasEmojiProvider FirstProvider(Config);
+	FMarkdownAtlasEmojiProvider SecondProvider(Config);
+
+	TestTrue(TEXT("Second provider reuses the preloaded emoji atlas"), FirstProvider.GetAtlas() == SecondProvider.GetAtlas());
+	TestTrue(TEXT("Shared emoji atlas is already loaded before providers are created"), FirstProvider.SupportsAtlasRendering());
+	TestTrue(TEXT("Reused emoji atlas remains renderable"), SecondProvider.SupportsAtlasRendering());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiStartupAtlasPreloadTest, "MarkdownSlate.Emoji.StartupAtlasPreload", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiStartupAtlasPreloadTest::RunTest(const FString& Parameters)
+{
+	FMarkdownAtlasEmojiProvider Provider;
+	TestTrue(TEXT("MarkdownSlate module startup preloads the default emoji atlas"), Provider.SupportsAtlasRendering());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiPlatformFontFirstTest, "MarkdownSlate.Emoji.PlatformFontFirst", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiPlatformFontFirstTest::RunTest(const FString& Parameters)
 {
 	FMarkdownSlateThemeConfig ThemeConfig = FMarkdownSlateThemeConfig::Default();
 	FMarkdownAtlasEmojiProvider Provider;
@@ -319,7 +379,39 @@ bool FMarkdownEmojiPlatformFontFallsBackToAtlasTest::RunTest(const FString& Para
 	TestEqual(TEXT("Emoji run has one child"), Children->Num(), 1);
 	if (Children->Num() > 0)
 	{
-		TestEqual(TEXT("Platform font mode uses visible atlas image when available"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("SImage")));
+        TestEqual(TEXT("Platform font mode keeps the configured emoji font"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("STextBlock")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownEmojiTwemojiFirstNoFontFallbackTest, "MarkdownSlate.Emoji.TwemojiFirstNoFontFallback", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownEmojiTwemojiFirstNoFontFallbackTest::RunTest(const FString& Parameters)
+{
+	const FMarkdownSlateThemeConfig ThemeConfig = FMarkdownSlateThemeConfig::Default();
+	FMarkdownEmojiRun Run;
+	Run.EmojiSequence = TEXT("馃榾");
+	Run.TwemojiCode = TEXT("1f600");
+	Run.bIsEmoji = true;
+
+	FMarkdownEmojiConfig Config;
+	Config.RenderMode = EMarkdownEmojiRenderMode::TwemojiFirst;
+	Config.bAllowTwemojiFallback = true;
+
+	const TSharedRef<SMarkdownEmojiRun> Widget = SNew(SMarkdownEmojiRun)
+		.Run(Run)
+		.FontSize(24)
+		.FontInfo(ThemeConfig.DefaultFont)
+		.EmojiFontInfo(ThemeConfig.EmojiFont)
+		.TextColor(FLinearColor::White)
+		.Config(Config);
+
+	const FChildren* Children = Widget->GetChildren();
+	TestEqual(TEXT("Twemoji-first emoji run has one child"), Children->Num(), 1);
+	if (Children->Num() == 1)
+	{
+		TestEqual(TEXT("Twemoji-first without an atlas uses a text fallback"), Children->GetChildAt(0)->GetTypeAsString(), FString(TEXT("STextBlock")));
+		const TSharedRef<const STextBlock> TextFallback = StaticCastSharedRef<const STextBlock>(Children->GetChildAt(0));
+		TestEqual(TEXT("Twemoji-first fallback does not use the emoji font"), TextFallback->GetFont().FontObject, ThemeConfig.DefaultFont.FontObject);
 	}
 	return true;
 }
@@ -405,6 +497,53 @@ bool FMarkdownParserParagraphTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Found paragraph"), bFound);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMarkdownPlainInlineLayoutWrapTest,
+	"MarkdownSlate.Renderer.PlainInlineLayoutWrap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter | EAutomationTestFlags::NonNullRHI)
+
+bool FMarkdownPlainInlineLayoutWrapTest::RunTest(const FString& Parameters)
+{
+	const FString Markdown = TEXT("A long ordinary clinical explanation should wrap through Slate layout while preserving every original character and without inserting hard line breaks into the Markdown model.");
+	TestFalse(TEXT("Plain Markdown control contains no source newline"), Markdown.Contains(TEXT("\n")));
+
+	FMarkdownParser Parser;
+	FMarkdownRenderBuilder Builder;
+	const TSharedPtr<FMarkdownBlockNode> AstRoot = Parser.Parse(Markdown);
+	const TSharedPtr<FMarkdownRenderNode> RenderRoot = Builder.Build(AstRoot);
+	if (!TestNotNull(TEXT("Plain Markdown render root builds"), RenderRoot.Get()) ||
+		!TestTrue(TEXT("Plain Markdown render root contains a paragraph"), RenderRoot->Children.Num() > 0))
+	{
+		return false;
+	}
+
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	Theme.WrapTextWidth = 160.0f;
+	const TSharedRef<SWidget> ParagraphWidget = FMarkdownSlateRenderer::RenderNode(RenderRoot->Children[0], Theme);
+	FWidgetRenderer Renderer(false, true);
+	ParagraphWidget->SlatePrepass(1.0f);
+	UTextureRenderTarget2D* RenderTarget = Renderer.DrawWidget(ParagraphWidget, FVector2D(180.0f, 400.0f));
+	ParagraphWidget->SlatePrepass(1.0f);
+
+	TestNotNull(TEXT("Plain inline wrap render target creates"), RenderTarget);
+	const FVector2D DesiredSize = ParagraphWidget->GetDesiredSize();
+	const FVector2D CachedSize = ParagraphWidget->GetTickSpaceGeometry().GetLocalSize();
+	AddInfo(FString::Printf(TEXT("Plain inline wrap geometry desired=(%.2f,%.2f) cached=(%.2f,%.2f)"), DesiredSize.X, DesiredSize.Y, CachedSize.X, CachedSize.Y));
+	TestTrue(TEXT("Plain inline desired width respects the positive theme wrap width"), DesiredSize.X <= Theme.WrapTextWidth + 1.0f);
+	TestTrue(TEXT("Plain inline cached width stays inside the render allocation"), CachedSize.X <= 180.0f + 1.0f);
+	TestTrue(TEXT("Plain inline desired layout grows vertically after wrapping"), DesiredSize.Y >= 60.0f);
+	TestFalse(TEXT("Renderer layout wrapping does not mutate source Markdown"), Markdown.Contains(TEXT("\n")));
+
+	Theme.WrapTextWidth = 0.0f;
+	const TSharedRef<SWidget> NonPositiveWrapWidget = FMarkdownSlateRenderer::RenderNode(RenderRoot->Children[0], Theme);
+	NonPositiveWrapWidget->SlatePrepass(1.0f);
+	const FVector2D NonPositiveDesiredSize = NonPositiveWrapWidget->GetDesiredSize();
+	TestTrue(TEXT("Non-positive wrap width retains a safe positive desired width"), NonPositiveDesiredSize.X > 0.0f);
+	TestTrue(TEXT("Non-positive wrap width retains a safe positive desired height"), NonPositiveDesiredSize.Y > 0.0f);
+	TestFalse(TEXT("Non-positive wrap width also preserves the source Markdown"), Markdown.Contains(TEXT("\n")));
 	return true;
 }
 
@@ -766,6 +905,205 @@ bool FMarkdownRenderBuilderNestedInlineTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Strong inline preserves child text"), bFoundStrongWithText);
 	TestTrue(TEXT("Link inline preserves child text"), bFoundLinkWithText);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererInlineNoWrapTest, "MarkdownSlate.Renderer.InlineNoWrap", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererInlineNoWrapTest::RunTest(const FString& Parameters)
+{
+	FMarkdownParser Parser;
+	FMarkdownRenderBuilder Builder;
+
+	const auto Ast = Parser.Parse(TEXT("Before **bold** [link](https://example.com) ~~strike~~ `code` after"));
+	const auto Root = Builder.Build(Ast);
+	TestTrue(TEXT("Root contains one paragraph"), Root.IsValid() && Root->Children.Num() == 1);
+	if (!Root.IsValid() || Root->Children.Num() != 1)
+	{
+		return false;
+	}
+
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderNode(Root->Children[0], FMarkdownSlateThemeConfig::Default());
+	TestEqual(TEXT("Paragraph inline flow remains wrappable"), Rendered->GetTypeAsString(), FString(TEXT("SWrapBox")));
+
+	bool bFoundNonWrappingInlineContainer = false;
+	const FChildren* Children = Rendered->GetChildren();
+	for (int32 Index = 0; Children && Index < Children->Num(); ++Index)
+	{
+		if (Children->GetChildAt(Index)->GetTypeAsString() == TEXT("SHorizontalBox"))
+		{
+			bFoundNonWrappingInlineContainer = true;
+			break;
+		}
+	}
+	TestTrue(TEXT("Nested Inline fragments use a non-wrapping horizontal layout"), bFoundNonWrappingInlineContainer);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererEmojiTextWrapTest, "MarkdownSlate.Renderer.EmojiTextWrapsWithinWidth", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererEmojiTextWrapTest::RunTest(const FString& Parameters)
+{
+	FString Text = TEXT("已经同步既往病历摘要，药物过敏需要特别注意 ");
+	Text.AppendChar(static_cast<TCHAR>(0xD83D));
+	Text.AppendChar(static_cast<TCHAR>(0xDE0A));
+	Text += TEXT(" 后续说明仍应在气泡可用宽度内提前换行，不能越过右侧边界后再被裁切。");
+
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	Theme.WrapTextWidth = 160.0f;
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderTextWithEmoji(
+		Text,
+		Theme,
+		Theme.DefaultFont,
+		Theme.BodyFontSize,
+		Theme.BodyTextColor);
+
+	FWidgetRenderer Renderer(false, true);
+	Rendered->SlatePrepass(1.0f);
+	UTextureRenderTarget2D* RenderTarget = Renderer.DrawWidget(Rendered, FVector2D(Theme.WrapTextWidth, 300.0f));
+	Rendered->SlatePrepass(1.0f);
+
+	TestNotNull(TEXT("Mixed emoji text render target creates"), RenderTarget);
+	TestEqual(TEXT("Emoji and adjacent text share a wrapping inline flow"), Rendered->GetTypeAsString(), FString(TEXT("SWrapBox")));
+	TestTrue(TEXT("Mixed emoji text desired width stays inside the configured wrap width"), Rendered->GetDesiredSize().X <= Theme.WrapTextWidth + 1.0f);
+	TestTrue(TEXT("Mixed emoji text grows vertically after wrapping"), Rendered->GetDesiredSize().Y >= Theme.BodyFontSize * 2.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownRendererInlineFallbackUsesEmojiRendererTest, "MarkdownSlate.Renderer.InlineFallbackUsesEmojiRenderer", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownRendererInlineFallbackUsesEmojiRendererTest::RunTest(const FString& Parameters)
+{
+	FString EmojiText;
+	EmojiText.AppendChar(static_cast<TCHAR>(0xD83D));
+	EmojiText.AppendChar(static_cast<TCHAR>(0xDCCB));
+
+	FMarkdownSlateThemeConfig Theme = FMarkdownSlateThemeConfig::Default();
+	FMarkdownAtlasEmojiProvider Provider;
+	Theme.EmojiProvider = &Provider;
+
+	const TSharedPtr<FMarkdownRenderNode> Node = MakeShared<FMarkdownRenderNode>();
+	Node->Type = EMarkdownRenderNodeType::Container;
+	Node->TextContent = FText::FromString(EmojiText);
+	const TSharedRef<SWidget> Rendered = FMarkdownSlateRenderer::RenderInlines(Node, Theme);
+
+	bool bContainsEmojiRun = false;
+	TFunction<void(const TSharedRef<const SWidget>&)> FindEmojiRun;
+	FindEmojiRun = [&bContainsEmojiRun, &FindEmojiRun](const TSharedRef<const SWidget>& Widget)
+	{
+		bContainsEmojiRun |= Widget->GetTypeAsString() == TEXT("SMarkdownEmojiRun");
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 Index = 0; !bContainsEmojiRun && Children && Index < Children->Num(); ++Index)
+		{
+			FindEmojiRun(Children->GetChildAt(Index));
+		}
+	};
+	FindEmojiRun(StaticCastSharedRef<const SWidget>(Rendered));
+
+	TestTrue(TEXT("Inline fallback routes emoji text through the atlas renderer"), bContainsEmojiRun);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingTableCandidateStabilityTest, "MarkdownSlate.Streaming.TableCandidateStability", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingTableCandidateStabilityTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	auto ContainsTableGrid = [](const TSharedRef<SWidget>& Root)
+	{
+		bool bContainsTableGrid = false;
+		TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+		Visit = [&bContainsTableGrid, &Visit](const TSharedRef<const SWidget>& Widget)
+		{
+			bContainsTableGrid |= Widget->GetTypeAsString() == TEXT("SGridPanel");
+			const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+			for (int32 Index = 0; !bContainsTableGrid && Children && Index < Children->Num(); ++Index)
+			{
+				Visit(Children->GetChildAt(Index));
+			}
+		};
+		Visit(StaticCastSharedRef<const SWidget>(Root));
+		return bContainsTableGrid;
+	};
+
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("| Metric | Value |\n"));
+	MarkdownView->AppendMarkdownChunk(TEXT("| --- | --- |\n"));
+	TestFalse(TEXT("Incomplete table candidate remains on the stable plain-text path"), ContainsTableGrid(MarkdownView));
+
+	MarkdownView->AppendMarkdownChunk(TEXT("| Blood pressure | 120/80"));
+	TestFalse(TEXT("Additional table tokens do not switch the pending block to a rendered table"), ContainsTableGrid(MarkdownView));
+
+	MarkdownView->EndStreamingMarkdown();
+	TestTrue(TEXT("Completed table renders once streaming is finalized"), ContainsTableGrid(MarkdownView));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingExpandsIntoParentTest, "MarkdownSlate.Streaming.ExpandsIntoParent", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingExpandsIntoParentTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("## Streaming table\n\n| Doctor | Time |\n| --- | --- |\n| Alice | Morning |\n"));
+
+	bool bContainsNestedScrollBox = false;
+	TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+	Visit = [&bContainsNestedScrollBox, &Visit](const TSharedRef<const SWidget>& Widget)
+	{
+		bContainsNestedScrollBox |= Widget->GetTypeAsString() == TEXT("SScrollBox");
+		const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+		for (int32 Index = 0; !bContainsNestedScrollBox && Children && Index < Children->Num(); ++Index)
+		{
+			Visit(Children->GetChildAt(Index));
+		}
+	};
+	Visit(StaticCastSharedRef<const SWidget>(MarkdownView));
+
+	TestFalse(
+		TEXT("Streaming Markdown grows in its parent instead of creating a nested scroll viewport"),
+		bContainsNestedScrollBox);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownTableColumnContentWeightsTest, "MarkdownSlate.Table.ColumnContentWeights", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownTableColumnContentWeightsTest::RunTest(const FString& Parameters)
+{
+	const TArray<float> Weights = FMarkdownTableLayout::NormalizeColumnWidths({40.0f, 240.0f}, 24.0f);
+	TestEqual(TEXT("Column layout returns one weight per column"), Weights.Num(), 2);
+	if (Weights.Num() != 2)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Longer content column receives more horizontal space"), Weights[1] > Weights[0]);
+	TestTrue(TEXT("Column weights are normalized"), FMath::IsNearlyEqual(Weights[0] + Weights[1], 1.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMarkdownStreamingMultilineInlineStabilityTest, "MarkdownSlate.Streaming.MultilineInlineStability", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+bool FMarkdownStreamingMultilineInlineStabilityTest::RunTest(const FString& Parameters)
+{
+	const TSharedRef<SMarkdownView> MarkdownView = SNew(SMarkdownView);
+	auto ContainsRichInlineLayout = [](const TSharedRef<SWidget>& Root)
+	{
+		bool bContainsRichInlineLayout = false;
+		TFunction<void(const TSharedRef<const SWidget>&)> Visit;
+		Visit = [&bContainsRichInlineLayout, &Visit](const TSharedRef<const SWidget>& Widget)
+		{
+			bContainsRichInlineLayout |= Widget->GetTypeAsString() == TEXT("SWrapBox");
+			const FChildren* Children = const_cast<SWidget&>(Widget.Get()).GetChildren();
+			for (int32 Index = 0; !bContainsRichInlineLayout && Children && Index < Children->Num(); ++Index)
+			{
+				Visit(Children->GetChildAt(Index));
+			}
+		};
+		Visit(StaticCastSharedRef<const SWidget>(Root));
+		return bContainsRichInlineLayout;
+	};
+
+	MarkdownView->BeginStreamingMarkdown();
+	MarkdownView->AppendMarkdownChunk(TEXT("第一行 **跨行的长 Inline\n"));
+	MarkdownView->AppendMarkdownChunk(TEXT("第二行内容已经闭合**，但流式输出仍在继续。"));
+	TestFalse(TEXT("Closed multiline inline remains on the stable plain-text path while pending"), ContainsRichInlineLayout(MarkdownView));
+
+	MarkdownView->EndStreamingMarkdown();
+	TestTrue(TEXT("Completed multiline inline renders after streaming finalizes"), ContainsRichInlineLayout(MarkdownView));
 	return true;
 }
 

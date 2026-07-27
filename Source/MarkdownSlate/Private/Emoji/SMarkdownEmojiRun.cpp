@@ -61,8 +61,7 @@ void SMarkdownEmojiRun::Construct(const FArguments& InArgs)
 		return;
 	}
 
-	if ((Config.RenderMode == EMarkdownEmojiRenderMode::TwemojiFirst ||
-		Config.RenderMode == EMarkdownEmojiRenderMode::PlatformFontFirst) && Provider)
+	if (Config.RenderMode == EMarkdownEmojiRenderMode::TwemojiFirst)
 	{
 		TSharedPtr<SWidget> AtlasImage = MakeAtlasImage();
 		if (AtlasImage.IsValid())
@@ -70,15 +69,32 @@ void SMarkdownEmojiRun::Construct(const FArguments& InArgs)
 			ChildSlot[AtlasImage.ToSharedRef()];
 			return;
 		}
-	}
 
-	if (bHasEmojiFont)
-	{
-		ChildSlot[MakeText(TextEmojiFont, false)];
+		// TwemojiFirst must never render through the platform color emoji font.
+		// The atlas can become available after the first widget construction, so
+		// use safe text until the next refresh can resolve its image brush.
+		ChildSlot[MakeText(UseFont, true)];
 		return;
 	}
+	else if (Config.RenderMode == EMarkdownEmojiRenderMode::PlatformFontFirst)
+	{
+		if (bHasEmojiFont)
+		{
+			ChildSlot[MakeText(TextEmojiFont, false)];
+			return;
+		}
 
-	if (Config.bAllowTwemojiFallback)
+		if (Config.bAllowTwemojiFallback)
+		{
+			TSharedPtr<SWidget> AtlasImage = MakeAtlasImage();
+			if (AtlasImage.IsValid())
+			{
+				ChildSlot[AtlasImage.ToSharedRef()];
+				return;
+			}
+		}
+	}
+	else if (Config.bAllowTwemojiFallback)
 	{
 		TSharedPtr<SWidget> AtlasImage = MakeAtlasImage();
 		if (AtlasImage.IsValid())

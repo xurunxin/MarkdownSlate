@@ -3,7 +3,6 @@
 #include "Render/MarkdownRenderBuilder.h"
 #include "Parser/MarkdownParser.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -118,6 +117,68 @@ bool ContainsMarkdownListLine(const FString& Text)
 	}
 	return false;
 }
+
+bool IsMarkdownTableDividerLine(const FString& Line)
+{
+	if (!Line.Contains(TEXT("|")))
+	{
+		return false;
+	}
+
+	TArray<FString> Cells;
+	Line.ParseIntoArray(Cells, TEXT("|"), true);
+	if (Cells.Num() < 2)
+	{
+		return false;
+	}
+
+	for (FString Cell : Cells)
+	{
+		Cell.TrimStartAndEndInline();
+		bool bContainsDash = false;
+		for (const TCHAR Character : Cell)
+		{
+			if (Character == TEXT('-'))
+			{
+				bContainsDash = true;
+				continue;
+			}
+			if (Character != TEXT(':') && !FChar::IsWhitespace(Character))
+			{
+				return false;
+			}
+		}
+		if (!bContainsDash)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool ContainsMarkdownTableCandidate(const FString& Text)
+{
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines, false);
+	for (int32 Index = 1; Index < Lines.Num(); ++Index)
+	{
+		if (Lines[Index - 1].Contains(TEXT("|")) && IsMarkdownTableDividerLine(Lines[Index]))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ContainsMarkdownInlineSyntax(const FString& Text)
+{
+	return CountUnescapedToken(Text, TEXT("`")) > 0 ||
+		CountUnescapedToken(Text, TEXT("*")) > 0 ||
+		CountUnescapedToken(Text, TEXT("_")) > 0 ||
+		CountUnescapedToken(Text, TEXT("~")) > 0 ||
+		CountUnescapedToken(Text, TEXT("[")) > 0;
+}
 }
 
 bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& PendingText)
@@ -137,9 +198,12 @@ bool MarkdownSlate::ShouldRenderPendingStreamingTextAsPlainText(const FString& P
 		return true;
 	}
 
-	if ((CountUnescapedToken(PendingText, TEXT("`")) % 2) != 0 ||
-		(CountUnescapedToken(PendingText, TEXT("**")) % 2) != 0 ||
-		(CountUnescapedToken(PendingText, TEXT("__")) % 2) != 0)
+	if (ContainsMarkdownTableCandidate(PendingText))
+	{
+		return true;
+	}
+
+	if (ContainsMarkdownInlineSyntax(PendingText))
 	{
 		return true;
 	}
@@ -210,7 +274,6 @@ void SMarkdownView::RefreshDisplay()
 	}
 
 	bIsStreamingMarkdown = false;
-	StreamingScrollBox.Reset();
 	StreamingContentBox.Reset();
 	PendingContentBox.Reset();
 	ContentBox->ClearChildren();
@@ -277,7 +340,6 @@ void SMarkdownView::BeginStreamingMarkdown()
 	StreamingBuffer.Reset();
 	StreamingFullText.Reset();
 	RenderedStableTextLen = 0;
-	StreamingScrollBox.Reset();
 	StreamingContentBox.Reset();
 	PendingContentBox.Reset();
 	MarkdownText.Set(FString());
@@ -289,13 +351,9 @@ void SMarkdownView::BeginStreamingMarkdown()
 
 	ContentBox->ClearChildren();
 	ContentBox->AddSlot()
+		.AutoHeight()
 		[
-			SAssignNew(StreamingScrollBox, SScrollBox)
-			+ SScrollBox::Slot()
-			.Padding(8)
-			[
-				SAssignNew(StreamingContentBox, SVerticalBox)
-			]
+			SAssignNew(StreamingContentBox, SVerticalBox)
 		];
 }
 
@@ -317,7 +375,6 @@ void SMarkdownView::AppendMarkdownChunk(const FString& Chunk)
 
 	AppendStableStreamingText(StreamingBuffer.GetStableText());
 	UpdatePendingStreamingText(StreamingBuffer.GetPendingText());
-	ScrollStreamingContentToEnd();
 }
 
 void SMarkdownView::EndStreamingMarkdown()
@@ -329,11 +386,10 @@ void SMarkdownView::EndStreamingMarkdown()
 
 	const FString PendingText = StreamingBuffer.GetPendingText();
 	if (!PendingText.IsEmpty())
-	{
-		AppendStableStreamingText(StreamingBuffer.GetStableText() + PendingText);
-		UpdatePendingStreamingText(FString());
-		ScrollStreamingContentToEnd();
-	}
+		{
+			AppendStableStreamingText(StreamingBuffer.GetStableText() + PendingText);
+			UpdatePendingStreamingText(FString());
+		}
 
 	bIsStreamingMarkdown = false;
 	StreamingBuffer.Reset();
@@ -361,7 +417,6 @@ void SMarkdownView::AppendStableStreamingText(const FString& StableText)
 		FMarkdownSlateRenderer::AppendChildren(StreamingContentBox.ToSharedRef(), Root, ThemeConfig);
 	}
 	RenderedStableTextLen = StableText.Len();
-	ScrollStreamingContentToEnd();
 }
 
 void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
@@ -396,14 +451,13 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 		FSlateFontInfo Font = ThemeConfig.DefaultFont;
 		Font.Size = ThemeConfig.BodyFontSize;
 		PendingContentBox->SetContent(
-			SNew(STextBlock)
-			.Text(FText::FromString(PendingText))
-			.Font(Font)
-			.ColorAndOpacity(FSlateColor(ThemeConfig.BodyTextColor))
-			.AutoWrapText(true)
-			.WrapTextAt(ThemeConfig.WrapTextWidth)
+			FMarkdownSlateRenderer::RenderTextWithEmoji(
+				PendingText,
+				ThemeConfig,
+				Font,
+				ThemeConfig.BodyFontSize,
+				ThemeConfig.BodyTextColor)
 		);
-		ScrollStreamingContentToEnd();
 		return;
 	}
 
@@ -413,13 +467,4 @@ void SMarkdownView::UpdatePendingStreamingText(const FString& PendingText)
 		FMarkdownSlateRenderer::AppendChildren(PendingVBox, PendingRoot, ThemeConfig);
 	}
 	PendingContentBox->SetContent(PendingVBox);
-	ScrollStreamingContentToEnd();
-}
-
-void SMarkdownView::ScrollStreamingContentToEnd()
-{
-	if (StreamingScrollBox.IsValid())
-	{
-		StreamingScrollBox->ScrollToEnd();
-	}
 }

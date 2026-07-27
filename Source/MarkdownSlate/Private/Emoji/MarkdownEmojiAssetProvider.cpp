@@ -1,5 +1,26 @@
 #include "Emoji/MarkdownEmojiAssetProvider.h"
 #include "Emoji/MarkdownEmojiAtlas.h"
+#include "HAL/CriticalSection.h"
+#include "Misc/ScopeLock.h"
+
+namespace
+{
+	TSharedPtr<FMarkdownEmojiAtlas> AcquireSharedEmojiAtlas(const FString& AssetRoot)
+	{
+		static FCriticalSection AtlasCacheMutex;
+		static TMap<FString, TSharedPtr<FMarkdownEmojiAtlas>> AtlasCache;
+
+		FScopeLock Lock(&AtlasCacheMutex);
+		if (const TSharedPtr<FMarkdownEmojiAtlas>* ExistingAtlas = AtlasCache.Find(AssetRoot))
+		{
+			return *ExistingAtlas;
+		}
+
+		TSharedPtr<FMarkdownEmojiAtlas> NewAtlas = MakeShared<FMarkdownEmojiAtlas>();
+		AtlasCache.Add(AssetRoot, NewAtlas);
+		return NewAtlas;
+	}
+}
 
 bool FMarkdownAtlasEmojiProvider::SupportsAtlasRendering() const
 {
@@ -7,13 +28,13 @@ bool FMarkdownAtlasEmojiProvider::SupportsAtlasRendering() const
 }
 
 FMarkdownAtlasEmojiProvider::FMarkdownAtlasEmojiProvider()
-	: Atlas(MakeShared<FMarkdownEmojiAtlas>())
+	: Atlas(AcquireSharedEmojiAtlas(Config.TwemojiAssetRoot))
 {
 }
 
 FMarkdownAtlasEmojiProvider::FMarkdownAtlasEmojiProvider(const FMarkdownEmojiConfig& InConfig)
 	: Config(InConfig)
-	, Atlas(MakeShared<FMarkdownEmojiAtlas>())
+	, Atlas(AcquireSharedEmojiAtlas(Config.TwemojiAssetRoot))
 {
 }
 
